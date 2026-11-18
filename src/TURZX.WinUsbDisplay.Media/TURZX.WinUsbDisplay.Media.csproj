@@ -8,6 +8,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Studio" />
     <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Tests" />
+    <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Probe" />
     <ProjectReference Include="../TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj" />
   </ItemGroup>
 </Project>

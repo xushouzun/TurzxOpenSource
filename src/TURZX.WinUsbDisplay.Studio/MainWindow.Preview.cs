@@ -78,6 +78,10 @@ public partial class MainWindow
     internal static byte MediaFrameRotation(DisplayModel model, byte rotation) =>
         UsesNativeLandscapeRaster(model, rotation) ? (byte)(4 - rotation) : rotation;
 
+    /// <summary>0123 始终接收原生竖向帧，由主机旋转像素，避免固件方向与 JPEG 栅格不匹配。</summary>
+    internal static byte FirmwareRotation(DisplayModel model, byte rotation) =>
+        model.ProductId == 0x0123 || UsesNativeLandscapeRaster(model, rotation) ? (byte)0 : rotation;
+
     /// <summary>读取当前旋转选项对应的四分之一圈数。</summary>
     private int PreviewQuarterTurns => Rotation.SelectedIndex is int index and >= 0 ? index : 0;
 

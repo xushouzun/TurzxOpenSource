@@ -92,7 +92,22 @@ finally
 | `ExchangeRawCommand(command, arguments)` | 通用裸通道收发。编号在偏移 0，参数从偏移 1 开始，最多 63 字节。返回实际应答字节 |
 | `ReadDiagnostic(command, raw)` | 返回原始应答。加密通道支持 10、17、50、60、100、112、122、201，裸通道支持 0x60、0x62 |
 
-设备库直接使用编码后的图片或视频。MP4 等容器需先转成 Annex B H.264，HTML 和 Windows 窗口需先渲染成 PNG。可自行生成这些字节，也可参考 `TURZX.WinUsbDisplay.Media` 中的 `VideoConverter`、`HtmlCapture`、`LiveScene` 和 `FrameInput`。
+设备库直接使用编码后的图片或视频。MP4 等容器需先转成 Annex B H.264，HTML 和 Windows 窗口需先渲染成 PNG 或 JPEG。可自行生成这些字节，也可参考 `TURZX.WinUsbDisplay.Media` 中的 `VideoConverter`、`HtmlCapture`、`LiveScene` 和 `FrameInput`。
+
+### HTML 捕捉的输出旋转
+
+`HtmlCapture.OpenAsync(source, model, cancellation, fastCapture, pixelScale, outputRotation)` 在浏览器合成阶段旋转捕捉输出。`model` 仍定义页面脚本看到的逻辑视口；例如逻辑尺寸为 1280 × 800、`pixelScale` 为 1、`outputRotation` 为 3 时，输出为 800 × 1280。
+
+| `outputRotation` | 输出方向 |
+| --- | --- |
+| `0` | 保持原行为；已有重载均使用此值 |
+| `1` | 逆时针 90° |
+| `2` | 180° |
+| `3` | 顺时针 90° |
+
+奇数值交换输出宽高，`pixelScale` 继续决定像素密度。非零旋转只支持本地 HTML：页面在保留逻辑尺寸的 `iframe` 中加载，CSS、脚本和图片等相对资源仍相对于原 HTML 地址解析。页面需能在 `iframe` 中运行。远程 HTTP(S) URL 的非零输出旋转抛出 `NotSupportedException`；`outputRotation=0` 的普通远程捕捉不受影响。此参数不向设备发送方向命令。
+
+旋转同样适用于 PNG 和 JPEG：`ReadFrameAsync`、`ReadPngScreencastAsync` 返回 PNG，`ReadJpegFrameAsync`、`ReadJpegScreencastAsync` 返回 JPEG。它们分别提供按需截图和连续推帧。
 
 ## 4. 会话和错误处理
 

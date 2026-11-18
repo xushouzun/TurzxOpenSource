@@ -92,7 +92,22 @@ finally
 | `ExchangeRawCommand(command, arguments)` | RAW チャネルで汎用の送受信を行います。コマンド番号はオフセット 0、引数はオフセット 1 から最大 63 バイトです。実際の応答バイトを返します |
 | `ReadDiagnostic(command, raw)` | 生の応答を返します。暗号化チャネルは 10、17、50、60、100、112、122、201、RAW チャネルは 0x60、0x62 に対応します |
 
-デバイスライブラリはエンコード済みの画像や動画を直接受け取ります。MP4 などのコンテナーは先に Annex B H.264 に変換し、HTML や Windows のウィンドウは PNG にレンダリングします。バイト列を自前で用意するか、`TURZX.WinUsbDisplay.Media` の `VideoConverter`、`HtmlCapture`、`LiveScene`、`FrameInput` を参照してください。
+デバイスライブラリはエンコード済みの画像や動画を直接受け取ります。MP4 などのコンテナーは先に Annex B H.264 に変換し、HTML や Windows のウィンドウは PNG または JPEG にレンダリングします。バイト列を自前で用意するか、`TURZX.WinUsbDisplay.Media` の `VideoConverter`、`HtmlCapture`、`LiveScene`、`FrameInput` を参照してください。
+
+### HTML キャプチャの出力回転
+
+`HtmlCapture.OpenAsync(source, model, cancellation, fastCapture, pixelScale, outputRotation)` は、ブラウザーの合成処理でキャプチャ出力を回転します。ページのスクリプトから見える論理ビューポートは引き続き `model` で定義します。例えば論理サイズが 1280 × 800、`pixelScale=1`、`outputRotation=3` の場合、出力は 800 × 1280 です。
+
+| `outputRotation` | 出力方向 |
+| --- | --- |
+| `0` | 従来の動作を維持します。既存のオーバーロードはすべてこの値を使用します |
+| `1` | 反時計回りに 90° |
+| `2` | 180° |
+| `3` | 時計回りに 90° |
+
+奇数値では出力の幅と高さを入れ替えます。`pixelScale` は引き続きピクセル密度を指定します。0 以外の回転はローカル HTML のみに対応します。ページは論理サイズを維持した `iframe` 内で読み込まれ、CSS、スクリプト、画像などの相対 URL は元の HTML のアドレスを基準に解決されます。ページは `iframe` 内で動作できる必要があります。リモート HTTP(S) URL に 0 以外の出力回転を指定すると `NotSupportedException` が発生します。`outputRotation=0` の通常のリモートキャプチャは従来どおりです。このパラメーターはデバイスの回転コマンドを送信しません。
+
+回転は PNG と JPEG の両方に適用されます。`ReadFrameAsync` と `ReadPngScreencastAsync` は PNG、`ReadJpegFrameAsync` と `ReadJpegScreencastAsync` は JPEG を返します。各組はそれぞれオンデマンドのスクリーンショットと連続フレーム配信に対応します。
 
 ## 4. セッションとエラー処理
 

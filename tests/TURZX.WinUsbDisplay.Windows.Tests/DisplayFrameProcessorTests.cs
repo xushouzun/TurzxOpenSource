@@ -8,6 +8,75 @@ namespace TURZX.WinUsbDisplay.Windows.Tests;
 public class DisplayFrameProcessorTests
 {
     [Fact]
+    public async Task FastHtmlCapturePreservesTheSelectedImageBackground() => await OnStaAsync(() =>
+    {
+        var model = new DisplayModel("7", 0x0070, 32, 32);
+        byte[] transparent = DisplayFrameProcessor.CreateBlankOverlay(model);
+        bool captureJpeg = TURZX.WinUsbDisplay.Studio.MainWindow.CanCaptureHtmlAsJpeg(
+            false, true, false, true);
+        byte[] captured = captureJpeg ? DisplayFrameProcessor.PrepareDirectJpegFrame(transparent, model) : transparent;
+        int[] blue = Enumerable.Repeat(0x0000ff, model.Width * model.Height).ToArray();
+        var background = BitmapSource.Create(model.Width, model.Height, 96, 96, PixelFormats.Bgr32,
+            null, blue, model.Width * 4);
+        byte[] frame = DisplayFrameProcessor.PrepareLiveHtmlFrame(captured, MediaLayout.Default,
+            background, MediaLayout.Default, model, false, 0, null, preferJpeg: true);
+        var output = new FormatConvertedBitmap(DisplayFrameProcessor.DecodeFrame(frame), PixelFormats.Bgr32, null, 0);
+        byte[] pixel = new byte[4];
+        output.CopyPixels(new System.Windows.Int32Rect(16, 16, 1, 1), pixel, 4, 0);
+        Assert.InRange(pixel[0], (byte)220, (byte)255);
+        Assert.InRange(pixel[1], (byte)0, (byte)35);
+        Assert.InRange(pixel[2], (byte)0, (byte)35);
+    });
+
+    [Theory]
+    [InlineData((byte)1, false)]
+    [InlineData((byte)3, true)]
+    public async Task RotatedJpegPlacesBothHalvesInTheExpectedOrientation(byte rotation, bool redOnTop) => await OnStaAsync(() =>
+    {
+        var model = new DisplayModel("7", 0x0070, 64, 96);
+        var canvas = model.ForRotation(rotation);
+        int[] colors = new int[canvas.Width * canvas.Height];
+        for (int y = 0; y < canvas.Height; y++)
+        for (int x = 0; x < canvas.Width; x++)
+            colors[y * canvas.Width + x] = x < canvas.Width / 2 ? 0xff0000 : 0x0000ff;
+        var bitmap = BitmapSource.Create(canvas.Width, canvas.Height, 96, 96, PixelFormats.Bgr32,
+            null, colors, canvas.Width * 4);
+        byte[] jpeg = DisplayFrameProcessor.PrepareLiveBitmapFrame(bitmap, MediaLayout.Default, null,
+            MediaLayout.Default, model, false, rotation, null, preferJpeg: true);
+        var decoded = new FormatConvertedBitmap(DisplayFrameProcessor.DecodeFrame(jpeg), PixelFormats.Bgr32, null, 0);
+        byte[] sample = new byte[4];
+        foreach (bool top in new[] { true, false })
+        {
+            decoded.CopyPixels(new System.Windows.Int32Rect(model.Width / 2, model.Height * (top ? 1 : 3) / 4, 1, 1), sample, 4, 0);
+            bool red = top == redOnTop;
+            Assert.InRange(sample[red ? 2 : 0], (byte)220, (byte)255);
+            Assert.InRange(sample[red ? 0 : 2], (byte)0, (byte)35);
+        }
+    });
+
+    [Theory]
+    [InlineData((ushort)0x0123, (byte)0)]
+    [InlineData((ushort)0x0123, (byte)1)]
+    [InlineData((ushort)0x0123, (byte)2)]
+    [InlineData((ushort)0x0123, (byte)3)]
+    [InlineData((ushort)0x0070, (byte)0)]
+    [InlineData((ushort)0x0070, (byte)1)]
+    [InlineData((ushort)0x0070, (byte)2)]
+    [InlineData((ushort)0x0070, (byte)3)]
+    public async Task HtmlJpegFallbackKeepsNativeDimensionsAfterRotation(ushort product, byte rotation) => await OnStaAsync(() =>
+    {
+        var model = new DisplayModel("test", product, 8, 6);
+        byte[] screenshot = DisplayFrameProcessor.CreateBlankOverlay(model.ForRotation(rotation));
+        byte[] frame = DisplayFrameProcessor.PrepareLiveHtmlFrame(screenshot, MediaLayout.Default, null,
+            MediaLayout.Default, model, preserveTransparency: false, rotation, crop: null, preferJpeg: true);
+
+        Assert.Equal(new byte[] { 0xff, 0xd8, 0xff }, frame[..3]);
+        var decoded = DisplayFrameProcessor.DecodeFrame(frame);
+        Assert.Equal(model.Width, decoded.PixelWidth);
+        Assert.Equal(model.Height, decoded.PixelHeight);
+    });
+
+    [Fact]
     public async Task BlankOverlayIsNativeSizeRgbaAndFullyTransparent() => await OnStaAsync(() =>
     {
         var model = new DisplayModel("test", 0, 8, 6);

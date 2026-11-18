@@ -12,6 +12,16 @@ namespace TURZX.WinUsbDisplay.Tests;
 /// <summary>验证 DevTools 截图和推帧的并发消息分派。</summary>
 public class HtmlCaptureTests
 {
+    [Fact]
+    public async Task BrowserRotationRejectsUnsupportedAnglesBeforeStartingBrowser() =>
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => HtmlCapture.OpenAsync("unused.html",
+            new DisplayModel("test", 0, 96, 64), CancellationToken.None, true, 1, 4));
+
+    [Fact]
+    public async Task BrowserRotationRejectsRemoteFramesBeforeStartingBrowser() =>
+        await Assert.ThrowsAsync<NotSupportedException>(() => HtmlCapture.OpenAsync("https://example.invalid/",
+            new DisplayModel("test", 0, 96, 64), CancellationToken.None, true, 1, 1));
+
     /// <summary>验证空闲推帧不会阻塞截图或读走其应答。</summary>
     [Fact]
     public async Task IdleScreencastDoesNotBlockScreenshotsOrConsumeTheirReplies()

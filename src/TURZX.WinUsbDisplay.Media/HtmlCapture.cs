@@ -75,9 +75,14 @@ public sealed class HtmlCapture : IAsyncDisposable
         bool fastCapture) => OpenAsync(source, model, cancellation, fastCapture, pixelScale: 1);
 
     /// <summary>以指定像素密度捕捉页面，同时保留设备尺寸对应的 CSS 视口。</summary>
+    public static Task<HtmlCapture> OpenAsync(string source, DisplayModel model, CancellationToken cancellation,
+        bool fastCapture, double pixelScale) => OpenAsync(source, model, cancellation, fastCapture, pixelScale, 0);
+
+    /// <summary>保留逻辑视口，并在浏览器合成阶段把输出旋转回设备原生方向。</summary>
     public static async Task<HtmlCapture> OpenAsync(string source, DisplayModel model, CancellationToken cancellation,
-        bool fastCapture, double pixelScale)
+        bool fastCapture, double pixelScale, byte outputRotation)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(outputRotation, (byte)3);
         if (!double.IsFinite(pixelScale) || pixelScale is <= 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(pixelScale));
         if (string.IsNullOrWhiteSpace(source))
@@ -89,12 +94,22 @@ public sealed class HtmlCapture : IAsyncDisposable
             uri = new Uri(Path.GetFullPath(source));
         else
             throw new ArgumentException("Enter a local HTML file or an HTTP(S) URL.", nameof(source));
+        if (outputRotation != 0 && !uri.IsFile)
+            throw new NotSupportedException("Browser-side output rotation requires a local HTML source.");
 
         cancellation.ThrowIfCancellationRequested();
         var capture = new HtmlCapture();
         try
         {
-            await capture.ConnectAsync(uri, model, cancellation, fastCapture, pixelScale).ConfigureAwait(false);
+            if (outputRotation != 0)
+            {
+                string wrapper = Path.Combine(capture.profile.FullName, "rotated.html");
+                await File.WriteAllTextAsync(wrapper, BuildRotatedPage(uri, model, outputRotation), cancellation).ConfigureAwait(false);
+                uri = new Uri(wrapper);
+                model = model.ForRotation(outputRotation);
+            }
+            await capture.ConnectAsync(uri, model, cancellation, fastCapture, pixelScale,
+                waitForFrame: outputRotation != 0).ConfigureAwait(false);
             return capture;
         }
         catch
@@ -104,9 +119,26 @@ public sealed class HtmlCapture : IAsyncDisposable
         }
     }
 
+    /// <summary>在原生视口中旋转独立子页面，子页面保留原来的逻辑宽高和相对资源地址。</summary>
+    internal static string BuildRotatedPage(Uri source, DisplayModel model, byte rotation)
+    {
+        string transform = rotation switch
+        {
+            1 => $"translate(0px,{model.Width}px) rotate(-90deg)",
+            2 => $"translate({model.Width}px,{model.Height}px) rotate(180deg)",
+            _ => $"translate({model.Height}px,0px) rotate(90deg)"
+        };
+        return "<!doctype html><html><head><meta charset='utf-8'><style>"
+            + "html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}"
+            + $"iframe{{position:absolute;left:0;top:0;width:{model.Width}px;height:{model.Height}px;border:0;"
+            + $"transform-origin:0 0;transform:{transform}}}</style></head><body>"
+            + $"<iframe src=\"{WebUtility.HtmlEncode(source.AbsoluteUri)}\" "
+            + "onload='window.__winUsbDisplayFrameReady=true'></iframe></body></html>";
+    }
+
     /// <summary>查找页面的 DevTools 端点并建立连接。</summary>
     internal async Task ConnectAsync(Uri source, DisplayModel model, CancellationToken cancellation, bool fastCapture,
-        double pixelScale, ProcessStartInfo? browserStart = null)
+        double pixelScale, ProcessStartInfo? browserStart = null, bool waitForFrame = false)
     {
         using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         startup.CancelAfter(TimeSpan.FromSeconds(20));
@@ -196,7 +228,8 @@ public sealed class HtmlCapture : IAsyncDisposable
             {
                 var state = await SendAsync("Runtime.evaluate", new
                 {
-                    expression = "location.href !== 'about:blank' && document.readyState !== 'loading'", returnByValue = true
+                    expression = "location.href !== 'about:blank' && document.readyState !== 'loading'"
+                        + (waitForFrame ? " && window.__winUsbDisplayFrameReady===true" : ""), returnByValue = true
                 }, token).ConfigureAwait(false);
                 if (state.GetProperty("result").TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.True)
                     break;

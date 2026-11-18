@@ -122,12 +122,27 @@ internal sealed class WinUsbTransport : IDisposable
         Action<TimeSpan, TimeSpan>? onTransfer = null)
     {
         long started = onTransfer is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
+        Write(request, length);
+        long writeCompleted = onTransfer is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
+
+        byte[] reply = ReadResponse(discardReply);
+        onTransfer?.Invoke(System.Diagnostics.Stopwatch.GetElapsedTime(started, writeCompleted),
+            System.Diagnostics.Stopwatch.GetElapsedTime(writeCompleted));
+        return reply;
+    }
+
+    /// <summary>只写入完整请求，适用于不返回应答的固件命令。</summary>
+    internal void Write(byte[] request, int length)
+    {
         if (!WinUsb_WritePipe(usb, Output, request, length, out int written, IntPtr.Zero))
             throw LastError("WinUsb_WritePipe");
         if (written != length)
             throw new IOException($"WinUSB short write ({written}/{length} bytes).");
-        long writeCompleted = onTransfer is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
+    }
 
+    /// <summary>继续读取设备应答，不重新发送请求，供查询跳过积压的旧回包。</summary>
+    internal byte[] ReadResponse(bool discardReply = false)
+    {
         // 逐帧发送仍等待设备应答，但调用方无需持有应答内容。
         var response = discardReply ? frameAcknowledgement : new byte[512];
         // 应答前可能收到一个零长度 USB 包。此时继续读取即可，无需重发请求。
@@ -143,8 +158,6 @@ internal sealed class WinUsbTransport : IDisposable
 
             if (received > 0)
             {
-                onTransfer?.Invoke(System.Diagnostics.Stopwatch.GetElapsedTime(started, writeCompleted),
-                    System.Diagnostics.Stopwatch.GetElapsedTime(writeCompleted));
                 if (discardReply)
                     return [];
                 Array.Resize(ref response, received);

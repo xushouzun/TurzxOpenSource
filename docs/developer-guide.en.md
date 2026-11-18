@@ -92,7 +92,22 @@ Keep the current connection target in your application as `DisplayDevice.Path`; 
 | `ExchangeRawCommand(command, arguments)` | generic raw-channel send/receive. The number is at offset 0, arguments from offset 1, up to 63 bytes. Returns the actual reply bytes |
 | `ReadDiagnostic(command, raw)` | returns the raw reply. Encrypted channel supports 10, 17, 50, 60, 100, 112, 122, 201; raw channel supports 0x60, 0x62 |
 
-The device library consumes encoded images or video directly. Containers such as MP4 must first be converted to Annex B H.264; HTML and Windows windows must first be rendered to PNG. Produce these bytes yourself, or refer to `VideoConverter`, `HtmlCapture`, `LiveScene` and `FrameInput` in `TURZX.WinUsbDisplay.Media`.
+The device library consumes encoded images or video directly. Containers such as MP4 must first be converted to Annex B H.264; HTML and Windows windows must first be rendered to PNG or JPEG. Produce these bytes yourself, or refer to `VideoConverter`, `HtmlCapture`, `LiveScene` and `FrameInput` in `TURZX.WinUsbDisplay.Media`.
+
+### HTML capture output rotation
+
+`HtmlCapture.OpenAsync(source, model, cancellation, fastCapture, pixelScale, outputRotation)` rotates captured output during browser compositing. `model` still defines the logical viewport seen by page scripts. For example, a logical viewport of 1280 × 800 with `pixelScale=1` and `outputRotation=3` produces 800 × 1280 output.
+
+| `outputRotation` | Output orientation |
+| --- | --- |
+| `0` | Preserves the original behavior; all existing overloads use this value |
+| `1` | 90° counterclockwise |
+| `2` | 180° |
+| `3` | 90° clockwise |
+
+Odd values exchange the output width and height; `pixelScale` still determines pixel density. Nonzero rotation supports local HTML only. The page loads inside an `iframe` that preserves its logical dimensions, and relative CSS, script and image URLs still resolve against the original HTML address. The page must support running inside an `iframe`. A remote HTTP(S) URL with nonzero output rotation throws `NotSupportedException`; ordinary remote capture with `outputRotation=0` is unchanged. This parameter does not send a device rotation command.
+
+Rotation applies to both PNG and JPEG capture: `ReadFrameAsync` and `ReadPngScreencastAsync` return PNG; `ReadJpegFrameAsync` and `ReadJpegScreencastAsync` return JPEG. Each pair provides on-demand screenshots and continuous screencasting, respectively.
 
 ## 4. Sessions and error handling
 

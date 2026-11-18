@@ -30,7 +30,7 @@ internal static class Program
         {
             return Run(args);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or FormatException
             or ArgumentException or NotSupportedException or System.ComponentModel.Win32Exception)
         {
             Console.Error.WriteLine(error.Message);
@@ -71,6 +71,10 @@ internal static class Program
         }
         if (args is ["--verify-video-blend"])
             return VerifyVideoBlend();
+        if (args is ["--verify-browser-rotation"])
+            return VerifyBrowserRotationAsync().GetAwaiter().GetResult();
+        if (args is ["--verify-browser-rotation", var rotationArtifacts])
+            return VerifyBrowserRotationAsync(rotationArtifacts).GetAwaiter().GetResult();
         if (args is ["--measure-window-buffer"])
             return MeasureWindowBuffer();
         if (args.Length is < 1 or > 6 || !ushort.TryParse(args[0], NumberStyles.HexNumber,
@@ -534,6 +538,69 @@ internal static class Program
             Console.Error.WriteLine($"PID {pid:X4}: {open.Failure} (Win32 {open.NativeErrorCode}). {open.Message}");
         else
             Console.Error.WriteLine($"PID {pid:X4}: {error.Message}");
+    }
+
+    /// <summary>用真实浏览器验证逻辑视口、原生输出尺寸和旋转后的颜色位置。</summary>
+    private static async Task<int> VerifyBrowserRotationAsync(string? artifacts = null)
+    {
+        var directory = Directory.CreateTempSubdirectory("WinUsbDisplay-Rotation-");
+        string path = Path.Combine(directory.FullName, "rotation.html");
+        try
+        {
+            await File.WriteAllTextAsync(path, """
+                <!doctype html><html><head><style>
+                html,body{width:100%;height:100%;margin:0;overflow:hidden}canvas{display:block}
+                </style></head><body><canvas></canvas><script>
+                const c=document.querySelector('canvas');c.width=innerWidth;c.height=innerHeight;
+                const g=c.getContext('2d');g.fillStyle=innerWidth===96&&innerHeight===64?'red':'lime';
+                g.fillRect(0,0,c.width/2,c.height);g.fillStyle='blue';g.fillRect(c.width/2,0,c.width/2,c.height);
+                </script></body></html>
+                """);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            var logical = new DisplayModel("rotation", 0, 96, 64);
+            foreach (byte rotation in new byte[] { 1, 2, 3 })
+            {
+                await using var capture = await HtmlCapture.OpenAsync(path, logical, deadline.Token,
+                    fastCapture: true, pixelScale: 1, outputRotation: rotation);
+                byte[] jpeg = await capture.ReadJpegScreencastAsync(deadline.Token)
+                    ?? throw new IOException("The browser returned no rotation test frame.");
+                VerifyPixels(jpeg, "screencast");
+                await capture.StopScreencastAsync(deadline.Token);
+                byte[] screenshot = await capture.ReadJpegFrameAsync(deadline.Token)
+                    ?? throw new IOException("The browser returned no fallback test frame.");
+                VerifyPixels(screenshot, "screenshot");
+
+                void VerifyPixels(byte[] jpeg, string mode)
+                {
+                if (artifacts is not null)
+                {
+                    Directory.CreateDirectory(artifacts);
+                    File.WriteAllBytes(Path.Combine(artifacts, $"rotation-{rotation}-{mode}.jpg"), jpeg);
+                }
+                var output = logical.ForRotation(rotation);
+                var bitmap = new FormatConvertedBitmap(DisplayFrameProcessor.DecodeFrame(jpeg), PixelFormats.Bgr32, null, 0);
+                if (bitmap.PixelWidth != output.Width || bitmap.PixelHeight != output.Height)
+                    throw new InvalidDataException($"Rotation {rotation}: unexpected output dimensions.");
+                var pixel = new byte[4];
+                for (int half = 0; half < 2; half++)
+                {
+                    int x = rotation == 2 ? output.Width * (half * 2 + 1) / 4 : output.Width / 2;
+                    int y = rotation == 2 ? output.Height / 2 : output.Height * (half * 2 + 1) / 4;
+                    bitmap.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
+                    bool red = rotation == 3 ? half == 0 : half == 1;
+                    if (pixel[red ? 2 : 0] < 220 || pixel[red ? 0 : 2] > 35 || pixel[1] > 35)
+                        throw new InvalidDataException($"Rotation {rotation}: incorrect pixel orientation or logical viewport; half={half}, BGR={pixel[0]},{pixel[1]},{pixel[2]}.");
+                }
+                Console.WriteLine($"Rotation {rotation} {mode}: logical 96x64, output {output.Width}x{output.Height}, JPEG pixel orientation verified.");
+                }
+            }
+            return 0;
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
     }
 
     /// <summary>测量实时前景视频编码和 USB 送屏。</summary>
@@ -1045,7 +1112,20 @@ internal static class Program
                 || !double.IsFinite(pixelScale) || pixelScale is <= 0 or > 1))
             throw new ArgumentException("Probe pixel scale must be greater than zero and at most one.");
 
-        await using var capture = await HtmlCapture.OpenAsync(source, model.ForRotation(rotation), token, fastCapture: UncapBrowserFrames, pixelScale);
+        bool browserRotation = Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_BROWSER_ROTATION") == "1";
+        bool browserPng = Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_BROWSER_PNG") == "1";
+        if (session is not null && Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_INITIALIZE") == "1")
+        {
+            session.StopPlayback();
+            session.SetRotation(0);
+            session.ShowDefaultClock(false);
+            Console.WriteLine($"Firmware: {session.ReadFirmwareVersion(token)}.");
+            session.ShowJpegFrame(DisplayFrameProcessor.PreparePlaybackJpeg(
+                DisplayFrameProcessor.CreateBlankOverlay(model), MediaLayout.Default, null, MediaLayout.Default, model)!);
+            session.ShowOverlay(DisplayFrameProcessor.CreateBlankOverlay(model));
+        }
+        await using var capture = await HtmlCapture.OpenAsync(source, model.ForRotation(rotation), token,
+            fastCapture: UncapBrowserFrames, pixelScale, outputRotation: browserRotation ? rotation : (byte)0);
         if (session is null && Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_COMPARE_ALPHA") == "1")
         {
             // 先截图，再启动推送，避免两个 CDP 读取操作互相干扰。
@@ -1062,29 +1142,42 @@ internal static class Program
             if (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_JPEG_PERCENT") is { } percent
                 && (!int.TryParse(percent, out jpegPercent) || jpegPercent is < 25 or > 100))
                 throw new ArgumentException("Probe JPEG output scale must be between 25 and 100 percent.");
-            bool directJpeg = rotation == 0 && pixelScale == 1
+            bool directJpeg = (rotation == 0 || browserRotation) && pixelScale == 1
                 && (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_JPEG") == "1"
                     || (model.ProductId == 0x0021 && Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_0021_JPEG") == "1"));
+            bool encodeJpeg = Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_JPEG_ENCODE") == "1";
             DisplayModel jpegCanvas = ScaleVideoCanvas(model, jpegPercent);
             byte[]? previousCapture = null;
             int reusedCaptures = 0;
             await MeasureLiveAsync(model, session, async cancellation =>
             {
                 long started = Stopwatch.GetTimestamp();
-                byte[] screenshot = (await (directJpeg || jpegPercent != 0
+                byte[] screenshot = (await (browserPng
+                    ? capture.ReadPngScreencastAsync(cancellation, TimeSpan.FromMilliseconds(1000d / ReadProbeCaptureFps()))
+                    : directJpeg || jpegPercent != 0 || encodeJpeg
                     ? ReadBrowserJpegAsync(capture, cancellation)
                     : capture.ReadFrameAsync(cancellation)))
                     ?? throw new IOException("The browser did not return a frame.");
                 if (ReferenceEquals(previousCapture, screenshot))
                     reusedCaptures++;
                 previousCapture = screenshot;
+                if (browserRotation && frames == 0)
+                {
+                    var raster = DisplayFrameProcessor.DecodeFrame(screenshot);
+                    Console.WriteLine($"Browser-rotated raster: {raster.PixelWidth}x{raster.PixelHeight}; PNG={browserPng}.");
+                    if (raster.PixelWidth != model.Width || raster.PixelHeight != model.Height)
+                        throw new InvalidDataException("The browser rotation did not produce the native device dimensions.");
+                    if (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_FRAME_PATH") is { Length: > 0 } framePath)
+                        File.WriteAllBytes(framePath, screenshot);
+                }
                 captureMs += Stopwatch.GetElapsedTime(started).TotalMilliseconds;
                 started = Stopwatch.GetTimestamp();
-                byte[] frame = jpegPercent != 0
+                byte[] frame = browserPng ? screenshot : jpegPercent != 0
                     ? DisplayFrameProcessor.PrepareForegroundVideoFrame(DisplayFrameProcessor.DecodeFrame(screenshot),
                         MediaLayout.Default, null, MediaLayout.Default, model, rotation, crop: null, jpegCanvas)
                     : directJpeg ? screenshot : DisplayFrameProcessor.PrepareLiveHtmlFrame(screenshot, MediaLayout.Default, null,
-                        MediaLayout.Default, model, preserveTransparency: false, rotation, crop: null);
+                        MediaLayout.Default, model, preserveTransparency: false, rotation, crop: null,
+                        preferJpeg: encodeJpeg);
                 encodeMs += Stopwatch.GetElapsedTime(started).TotalMilliseconds;
                 bytes += frame.Length;
                 frames++;
@@ -1175,12 +1268,16 @@ internal static class Program
         var usbDurations = new List<double>();
         var usbWrites = new List<double>();
         var usbReplies = new List<double>();
+        double lastUsbWriteMs = 0;
+        double lastUsbReplyMs = 0;
         byte[]? previousSentFrame = null;
         var changedFrameGaps = new List<double>();
         int repeatedFrames = 0;
         double longestRepeatedGapMs = 0;
         long previousAcknowledgement = 0;
         long previousChangedAcknowledgement = 0;
+        string? tracePath = Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_TRACE_PATH");
+        var samples = new List<PlaybackSample>();
         if (browserScreencast && Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_NATIVE_PACING") == "1")
         {
             // 推帧已经等待浏览器生成画面。测量时直接确认新帧，避免定时器影响推送频率。
@@ -1221,6 +1318,8 @@ internal static class Program
         // 记录一帧 JPEG 的写入及应答耗时。
         void RecordJpegTransfer(TimeSpan write, TimeSpan reply)
         {
+            lastUsbWriteMs = write.TotalMilliseconds;
+            lastUsbReplyMs = reply.TotalMilliseconds;
             usbWrites.Add(write.TotalMilliseconds);
             usbReplies.Add(reply.TotalMilliseconds);
         }
@@ -1228,6 +1327,45 @@ internal static class Program
         // 输出所记录的 USB 传输耗时统计。
         void PrintUsbDurations()
         {
+            if (tracePath is not null && samples.Count > 0)
+            {
+                int warmup = int.TryParse(Environment.GetEnvironmentVariable("WINUSB_DISPLAY_PROBE_WARMUP_SECONDS"), out int requestedWarmup)
+                    && requestedWarmup is >= 0 and <= 10 ? requestedWarmup : 0;
+                int seconds = (int)sampleDuration.TotalSeconds - warmup;
+                if (seconds <= 0)
+                    throw new ArgumentException("The sample duration must exceed the warmup duration.");
+                var measured = samples.Where(frame => frame.Milliseconds >= warmup * 1000d
+                    && frame.Milliseconds < (warmup + seconds) * 1000d).ToArray();
+                var buckets = Enumerable.Range(0, seconds).Select(second => new
+                {
+                    second,
+                    acknowledged = measured.Count(frame => frame.Milliseconds >= (warmup + second) * 1000d
+                        && frame.Milliseconds < (warmup + second + 1) * 1000d),
+                    changed = measured.Count(frame => frame.Changed && frame.Milliseconds >= (warmup + second) * 1000d
+                        && frame.Milliseconds < (warmup + second + 1) * 1000d)
+                }).ToArray();
+                double[] changedTimes = measured.Where(frame => frame.Changed).Select(frame => frame.Milliseconds).ToArray();
+                double[] gaps = changedTimes.Skip(1).Zip(changedTimes, (current, previous) => current - previous).Order().ToArray();
+                double distinctFps = measured.Count(frame => frame.Changed) / (double)seconds;
+                double fps = measured.Length / (double)seconds;
+                double p95 = gaps.Length == 0 ? 0 : gaps[(int)Math.Ceiling(gaps.Length * .95) - 1];
+                var trace = new
+                {
+                    schema_version = 1, pid = model.ProductId.ToString("X4"), native_width = model.Width,
+                    native_height = model.Height, capture_fps = captureFps, warmup_seconds = warmup,
+                    measured_seconds = seconds, acknowledged_fps = fps, distinct_fps = distinctFps,
+                    distinct_gap_p95_ms = p95, minimum_one_second_acknowledged = buckets.Min(bucket => bucket.acknowledged),
+                    minimum_one_second_changed = buckets.Min(bucket => bucket.changed),
+                    performance_pass = fps >= 20 && distinctFps >= 20 && buckets.All(bucket => bucket.acknowledged >= 20),
+                    windows = buckets, frames = samples
+                };
+                string fullPath = Path.GetFullPath(tracePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                File.WriteAllText(fullPath, System.Text.Json.JsonSerializer.Serialize(trace,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                Console.WriteLine(FormattableString.Invariant(
+                    $"Acceptance window: {seconds}s after {warmup}s warmup; acknowledged {fps:F2} FPS; distinct {distinctFps:F2} FPS; minimum 1s count {buckets.Min(bucket => bucket.acknowledged)}; distinct gap p95 {p95:F2} ms; pass={trace.performance_pass}."));
+            }
             if (usbDurations.Count == 0)
                 return;
             if (changedFrameGaps.Count > 0)
@@ -1256,10 +1394,11 @@ internal static class Program
         ValueTask CountFrameAsync(byte[] frame)
         {
             long now = Stopwatch.GetTimestamp();
+            bool changed = previousSentFrame is null || !frame.AsSpan().SequenceEqual(previousSentFrame);
             if (previousAcknowledgement != 0)
             {
                 double gap = Stopwatch.GetElapsedTime(previousAcknowledgement, now).TotalMilliseconds;
-                if (!frame.AsSpan().SequenceEqual(previousSentFrame))
+                if (changed)
                 {
                     changedFrameGaps.Add(Stopwatch.GetElapsedTime(previousChangedAcknowledgement, now).TotalMilliseconds);
                     previousChangedAcknowledgement = now;
@@ -1277,6 +1416,9 @@ internal static class Program
                 previousChangedAcknowledgement = now;
                 clock.Restart();
             }
+            if (tracePath is not null)
+                samples.Add(new PlaybackSample(clock.Elapsed.TotalMilliseconds, changed, frame.Length,
+                    Convert.ToHexString(SHA256.HashData(frame)), lastUsbWriteMs, lastUsbReplyMs));
             if (clock.Elapsed >= sampleDuration)
             {
                 clock.Stop();
@@ -1285,6 +1427,9 @@ internal static class Program
             return ValueTask.CompletedTask;
         }
     }
+
+    private sealed record PlaybackSample(double Milliseconds, bool Changed, int Bytes, string Sha256,
+        double UsbWriteMilliseconds, double UsbReplyMilliseconds);
 
     /// <summary>从环境变量读取 1 至 120 秒的采样时长，否则使用默认值。</summary>
     private static TimeSpan GetLiveSampleDuration(int defaultSeconds = 10) =>

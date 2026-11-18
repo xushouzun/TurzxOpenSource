@@ -92,7 +92,22 @@ finally
 | `ExchangeRawCommand(command, arguments)` | 원시 채널에서 범용 송수신을 수행합니다. 명령 번호는 오프셋 0에 있으며 매개 변수는 오프셋 1부터 최대 63바이트입니다. 실제 응답 바이트를 반환합니다 |
 | `ReadDiagnostic(command, raw)` | 원시 응답을 반환합니다. 암호화 채널은 10, 17, 50, 60, 100, 112, 122, 201을 지원하고 원시 채널은 0x60, 0x62를 지원합니다 |
 
-장치 라이브러리는 인코딩된 이미지나 동영상을 직접 받습니다. MP4 같은 컨테이너는 먼저 Annex B H.264로 변환하고 HTML과 Windows 창은 PNG로 렌더링해야 합니다. 바이트를 직접 생성하거나 `TURZX.WinUsbDisplay.Media`의 `VideoConverter`, `HtmlCapture`, `LiveScene`, `FrameInput`을 참고하세요.
+장치 라이브러리는 인코딩된 이미지나 동영상을 직접 받습니다. MP4 같은 컨테이너는 먼저 Annex B H.264로 변환하고 HTML과 Windows 창은 PNG 또는 JPEG로 렌더링해야 합니다. 바이트를 직접 생성하거나 `TURZX.WinUsbDisplay.Media`의 `VideoConverter`, `HtmlCapture`, `LiveScene`, `FrameInput`을 참고하세요.
+
+### HTML 캡처 출력 회전
+
+`HtmlCapture.OpenAsync(source, model, cancellation, fastCapture, pixelScale, outputRotation)`은 브라우저 합성 단계에서 캡처 출력을 회전합니다. 페이지 스크립트에 표시되는 논리 뷰포트는 계속 `model`로 정의합니다. 예를 들어 논리 크기가 1280 × 800이고 `pixelScale=1`, `outputRotation=3`이면 출력은 800 × 1280입니다.
+
+| `outputRotation` | 출력 방향 |
+| --- | --- |
+| `0` | 기존 동작을 유지합니다. 기존 오버로드는 모두 이 값을 사용합니다 |
+| `1` | 시계 반대 방향 90° |
+| `2` | 180° |
+| `3` | 시계 방향 90° |
+
+홀수 값은 출력의 너비와 높이를 바꿉니다. `pixelScale`은 계속 픽셀 밀도를 지정합니다. 0이 아닌 회전은 로컬 HTML만 지원합니다. 페이지는 논리 크기를 유지하는 `iframe` 안에서 로드되며 CSS, 스크립트, 이미지의 상대 URL은 원본 HTML 주소를 기준으로 해석됩니다. 페이지는 `iframe` 안에서 실행될 수 있어야 합니다. 원격 HTTP(S) URL에 0이 아닌 출력 회전을 지정하면 `NotSupportedException`이 발생합니다. `outputRotation=0`인 일반 원격 캡처는 영향을 받지 않습니다. 이 매개 변수는 장치 회전 명령을 보내지 않습니다.
+
+회전은 PNG와 JPEG 캡처에 모두 적용됩니다. `ReadFrameAsync`와 `ReadPngScreencastAsync`는 PNG를, `ReadJpegFrameAsync`와 `ReadJpegScreencastAsync`는 JPEG를 반환합니다. 각 쌍은 각각 필요할 때 요청하는 스크린샷과 연속 프레임 전송을 제공합니다.
 
 ## 4. 세션 및 오류 처리
 

@@ -299,4 +299,62 @@ public class DeviceFileTests
         Assert.Equal(3, requests);
         Assert.Equal(1, resets);
     }
+
+    [Fact]
+    public void VerifiedQueryDrainsStaleStopRepliesWithoutResendingTheQuery()
+    {
+        var gate = new Lock();
+        byte[] expected = new byte[512];
+        expected[0] = 17;
+        var replies = new Queue<byte[]>([new byte[] { 111 }, new byte[] { 111 }, expected]);
+        int requests = 0;
+        byte[] received = DisplaySession.RetryVerifiedQuery(gate, 17, 12, () =>
+        {
+            requests++;
+            return [111];
+        }, () => throw new InvalidOperationException("Unexpected reset."), CancellationToken.None,
+            readNextResponse: () =>
+            {
+                Assert.True(gate.IsHeldByCurrentThread);
+                return replies.Dequeue();
+            });
+
+        Assert.Same(expected, received);
+        Assert.Equal(1, requests);
+        Assert.Empty(replies);
+    }
+
+    [Fact]
+    public void VerifiedQueryBoundsStaleRepliesAndPreservesTheLastResponse()
+    {
+        byte[] stale = [111];
+        int requests = 0;
+        int reads = 0;
+        var error = Assert.Throws<DeviceResponseException>(() => DisplaySession.RetryVerifiedQuery(
+            new Lock(), 17, 12, () => { requests++; return stale; }, () => { }, CancellationToken.None,
+            readNextResponse: () => { reads++; return stale; }));
+
+        Assert.Equal(DeviceResponseFailure.UnexpectedReply, error.Failure);
+        Assert.Equal(stale, error.Response.ToArray());
+        Assert.Equal(3, requests);
+        Assert.Equal(60, reads);
+    }
+
+    [Fact]
+    public void VerifiedQueryStopsDrainingStaleRepliesWhenCancelled()
+    {
+        using var cancellation = new CancellationTokenSource();
+        int reads = 0;
+        var error = Assert.Throws<OperationCanceledException>(() => DisplaySession.RetryVerifiedQuery(
+            new Lock(), 17, 12, () => [111], () => { }, cancellation.Token,
+            readNextResponse: () =>
+            {
+                reads++;
+                cancellation.Cancel();
+                return [111];
+            }));
+
+        Assert.Equal(cancellation.Token, error.CancellationToken);
+        Assert.Equal(1, reads);
+    }
 }

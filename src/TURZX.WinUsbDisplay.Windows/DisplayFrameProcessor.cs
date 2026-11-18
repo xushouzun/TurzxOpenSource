@@ -151,7 +151,8 @@ internal static class DisplayFrameProcessor
     /// <summary>准备网页截图生成的实时送屏帧。</summary>
     internal static byte[] PrepareLiveHtmlFrame(byte[] screenshot, MediaLayout foregroundLayout,
         BitmapSource? background, MediaLayout backgroundLayout, DisplayModel model, bool preserveTransparency,
-        byte rotation, Rect? crop, BitmapScalingMode scalingMode = BitmapScalingMode.HighQuality)
+        byte rotation, Rect? crop, BitmapScalingMode scalingMode = BitmapScalingMode.HighQuality,
+        bool preferJpeg = false)
     {
         BitmapSource bitmap = DecodeFrame(screenshot);
         if (crop is null && background is null && rotation == 0 && preserveTransparency
@@ -161,7 +162,7 @@ internal static class DisplayFrameProcessor
             return screenshot;
 
         return PrepareLiveBitmapFrame(bitmap, foregroundLayout, background, backgroundLayout, model,
-            preserveTransparency, rotation, crop, scalingMode);
+            preserveTransparency, rotation, crop, scalingMode, preferJpeg);
     }
 
     /// <summary>将已捕捉的位图转换为实时送屏帧。</summary>

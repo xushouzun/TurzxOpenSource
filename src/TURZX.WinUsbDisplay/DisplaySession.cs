@@ -255,6 +255,18 @@ public sealed class DisplaySession : IDisposable
         Exchange(102, png, discardReply: true);
     }
 
+    /// <summary>为不应答 PNG 的固件写入清层帧，并在同一个锁内留出处理时间。</summary>
+    internal void ClearOverlayWithoutResponse(ReadOnlySpan<byte> png, CancellationToken cancellation)
+    {
+        ValidateOverlay(png);
+        lock (gate)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            Exchange(102, png, waitForResponse: false);
+            Delay(100, cancellation);
+        }
+    }
+
     /// <summary>发送一帧 JPEG，适用于没有视频背景的连续输出。</summary>
     public void ShowJpegFrame(ReadOnlySpan<byte> jpeg) => ShowJpegFrame(jpeg, null);
 
@@ -948,11 +960,13 @@ public sealed class DisplaySession : IDisposable
     /// <summary>发送查询并校验应答的命令和最短长度。</summary>
     private byte[] ReadExpectedResponse(byte command, int minimumLength, CancellationToken cancellation,
         Func<byte[], bool>? validate = null) => RetryVerifiedQuery(gate, command, minimumLength,
-            () => Exchange(command, []), () => transport.TryResetOutputPipe(), cancellation, validate);
+            () => Exchange(command, []), () => transport.TryResetOutputPipe(), cancellation, validate,
+            () => transport.ReadResponse());
 
     /// <summary>在同一个锁内查询、验证应答，并按需重试或复位输出管道。</summary>
     internal static byte[] RetryVerifiedQuery(Lock gate, byte command, int minimumLength, Func<byte[]> request,
-        Action resetOutputPipe, CancellationToken cancellation, Func<byte[], bool>? validate = null)
+        Action resetOutputPipe, CancellationToken cancellation, Func<byte[], bool>? validate = null,
+        Func<byte[]>? readNextResponse = null)
     {
         byte[] reply = [];
         for (int attempt = 0; attempt < 3; attempt++)
@@ -967,6 +981,14 @@ public sealed class DisplaySession : IDisposable
                 try
                 {
                     reply = request();
+                    // 停止播放等命令可能留下旧应答。保持会话锁并继续读，避免重发查询让应答进一步积压。
+                    // 每次最多跳过 20 个旧包；无匹配应答时仍按原来的三次查询上限报告失败。
+                    for (int skipped = 0; readNextResponse is not null && reply.Length > 0
+                        && reply[0] != command && skipped < 20; skipped++)
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        reply = readNextResponse();
+                    }
                 }
                 catch (Exception ex) when (ex is IOException or Win32Exception { NativeErrorCode: 121 or 1460 })
                 {
@@ -1031,7 +1053,7 @@ public sealed class DisplaySession : IDisposable
     /// <summary>组装协议请求并在会话锁内与设备交换数据。</summary>
     private byte[] Exchange(byte command, ReadOnlySpan<byte> payload, byte value = 0, bool finalBlock = false,
         ReadOnlySpan<byte> arguments = default, bool writePayloadLength = true, bool discardReply = false,
-        Action<TimeSpan, TimeSpan>? onTransfer = null)
+        Action<TimeSpan, TimeSpan>? onTransfer = null, bool waitForResponse = true)
     {
         lock (gate)
         {
@@ -1043,7 +1065,10 @@ public sealed class DisplaySession : IDisposable
                 EncodePacketInto(packet.AsSpan(0, length), key,
                     unchecked((uint)Convert.ToInt64((DateTime.UtcNow - timestampEpoch).TotalMilliseconds)),
                     command, payload, value, finalBlock, arguments, writePayloadLength);
-                return transport.Exchange(packet, length, discardReply, onTransfer);
+                if (waitForResponse)
+                    return transport.Exchange(packet, length, discardReply, onTransfer);
+                transport.Write(packet, length);
+                return [];
             }
             finally
             {

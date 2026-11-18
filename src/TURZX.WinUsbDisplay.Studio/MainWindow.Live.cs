@@ -178,9 +178,10 @@ public partial class MainWindow
             {
                 await ValidateLocalSourcesAsync(background, mode == 0 ? source : null,
                     mode == SlideshowSourceMode ? slides : [], active.Token);
+                // 0123 的实时 H.264 虽有应答，实屏仍出现局部马赛克；先统一使用 JPEG 路径。
                 if (mode is 0 or 1 && captureFps == 20 && background.Length == 0 && frameRotation == 0 && crop is null
                     && foreground is { ZoomPercent: 100, OffsetX: 0, OffsetY: 0 }
-                    && device.Model.ProductId is 0x0021 or 0x0046 or 0x0070 or 0x0123
+                    && device.Model.ProductId is 0x0021 or 0x0046 or 0x0070
                     && await TryPlayBufferedForegroundAsync(active, source, mode == 1 ? window : null, key, rotation, captureFps))
                 {
                     active.Token.ThrowIfCancellationRequested();
@@ -344,14 +345,23 @@ public partial class MainWindow
                     capturedBackground?.Freeze();
                     HtmlCapture? html = null;
                     // 浏览器视口已与原生画布匹配时，直接发送 JPEG，省去解码和重新编码。
-                    bool preferFastJpeg = device.Model.ProductId == 0x0055 && captureFps == 20;
-                    bool directJpeg = (device.Model.ProductId == 0x0021 || preferFastJpeg)
+                    bool preferFastJpeg = device.Model.ProductId is 0x0070 or 0x0123
+                        || (device.Model.ProductId == 0x0055 && captureFps == 20);
+                    byte browserOutputRotation = device.Model.ProductId == 0x0070 && mode == 0
+                        && File.Exists(source)
+                        && !backgroundVideo && capturedBackground is null && crop is null
+                        && foreground is { ZoomPercent: 100, OffsetX: 0, OffsetY: 0 }
+                        ? frameRotation : (byte)0;
+                    bool directJpeg = browserOutputRotation != 0 || (device.Model.ProductId == 0x0021 || preferFastJpeg)
                         && !backgroundVideo
                         && capturedBackground is null && frameRotation == 0 && crop is null
                         && foreground is { ZoomPercent: 100, OffsetX: 0, OffsetY: 0 };
-                    bool usePreviewFrame = startupHtmlFrame is not null;
-                    bool pushCompositedHtml = !directJpeg && captureFps >= 20;
-                    bool useScreencast = directJpeg || pushCompositedHtml;
+                    bool usePreviewFrame = startupHtmlFrame is not null && browserOutputRotation == 0;
+                    // 无视频背景时用 JPEG 捕捉与送屏；原生直传以外的布局仍由主机合成。
+                    bool jpegCapture = CanCaptureHtmlAsJpeg(directJpeg, preferFastJpeg,
+                        backgroundVideo, capturedBackground is not null);
+                    bool pushCompositedHtml = !jpegCapture && captureFps >= 20;
+                    bool useScreencast = jpegCapture || pushCompositedHtml;
                     // 从当前网页捕捉链路读取下一帧。
                     async ValueTask<byte[]?> ReadHtmlFrameAsync(CancellationToken frameToken)
                     {
@@ -364,7 +374,8 @@ public partial class MainWindow
 
                         // 单独送屏的 JPEG 快路径允许 Chromium 更快生成下一帧。
                         html ??= await HtmlCapture.OpenAsync(source, canvas, frameToken,
-                            fastCapture: (directJpeg && preferFastJpeg) || (!useScreencast && captureFps >= 20));
+                            fastCapture: (jpegCapture && preferFastJpeg) || (!useScreencast && captureFps >= 20),
+                            pixelScale: 1, outputRotation: browserOutputRotation);
                         if (pushCompositedHtml && useScreencast)
                         {
                             try
@@ -381,7 +392,7 @@ public partial class MainWindow
                                 return screenshot;
                             }
                         }
-                        if (directJpeg)
+                        if (jpegCapture)
                         {
                             byte[]? jpeg;
                             try
@@ -389,7 +400,7 @@ public partial class MainWindow
                                 jpeg = useScreencast
                                     ? await html.ReadJpegScreencastAsync(frameToken,
                                         quality: preferFastJpeg ? 70 : 85,
-                                        repeatAfter: TimeSpan.FromMilliseconds(preferFastJpeg ? 50 : 5))
+                                        repeatAfter: TimeSpan.FromMilliseconds(preferFastJpeg ? 1000d / captureFps : 5))
                                     : await html.ReadJpegFrameAsync(frameToken);
                             }
                             catch (Exception error) when (useScreencast && !frameToken.IsCancellationRequested
@@ -397,7 +408,7 @@ public partial class MainWindow
                             {
                                 useScreencast = false;
                                 (html, jpeg) = await UseScreenshotFallbackAsync(html, source, canvas, frameToken,
-                                    jpeg: true);
+                                    jpeg: true, fastCapture: preferFastJpeg, outputRotation: browserOutputRotation);
                             }
                             return jpeg;
                         }
@@ -452,7 +463,8 @@ public partial class MainWindow
                             previousOverlay = directJpeg ? DisplayFrameProcessor.PrepareDirectJpegFrame(frame, device.Model)
                                 : DisplayFrameProcessor.PrepareLiveHtmlFrame(frame, foreground, capturedBackground,
                                 backgroundPlacement, device.Model, preserveTransparency: backgroundVideo,
-                                rotation: frameRotation, crop: crop);
+                                rotation: frameRotation, crop: crop,
+                                preferJpeg: device.Model.ProductId is 0x0070 or 0x0123);
                             previousScreenshot = frame;
                             return previousOverlay;
                         };
@@ -469,10 +481,15 @@ public partial class MainWindow
 
                     // 网页首帧尚未就绪时可以先启动视频背景，用透明帧清掉设备残留的前景。
                     bool deferForeground = backgroundVideo && mode == 0 && startupHtmlFrame is null;
-                    if (deferForeground || (mode == 0 && directJpeg))
+                    if (device.Model.ProductId != 0x0123 && (deferForeground || (mode == 0 && jpegCapture)))
                     {
                         byte[] blank = DisplayFrameProcessor.CreateBlankOverlay(device.Model);
                         token.ThrowIfCancellationRequested();
+                        // 0070 切入 JPEG 前先初始化黑色主层，再清理 PNG 覆盖层，避免旧图层拖慢合成。
+                        if (device.Model.ProductId == 0x0070 && jpegCapture)
+                            session.ShowJpegFrame(DisplayFrameProcessor.PreparePlaybackJpeg(blank,
+                                MediaLayout.Default, null, MediaLayout.Default, device.Model)
+                                ?? throw new InvalidDataException("Could not prepare the initial JPEG frame."));
                         session.ShowOverlay(blank);
                     }
                     long sampleStarted = 0;
@@ -694,10 +711,15 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>需要与背景合成时保留网页 Alpha，仅在不需要背景时采用 JPEG 捕捉。</summary>
+    internal static bool CanCaptureHtmlAsJpeg(bool directJpeg, bool preferFastJpeg,
+        bool hasVideoBackground, bool hasImageBackground) =>
+        !hasVideoBackground && !hasImageBackground && (directJpeg || preferFastJpeg);
+
     /// <summary>推帧不可用时转为按需截图，并返回可继续使用的捕捉实例。</summary>
     private static async Task<(HtmlCapture Capture, byte[]? Frame)> UseScreenshotFallbackAsync(
         HtmlCapture capture, string source, DisplayModel canvas, CancellationToken cancellation,
-        bool jpeg = false, bool fastCapture = false, double pixelScale = 1)
+        bool jpeg = false, bool fastCapture = false, double pixelScale = 1, byte outputRotation = 0)
     {
         try
         {
@@ -716,7 +738,7 @@ public partial class MainWindow
         {
             // 只要原页面还能截图，就继续复用它。
             await capture.DisposeAsync();
-            var replacement = await HtmlCapture.OpenAsync(source, canvas, cancellation, fastCapture, pixelScale);
+            var replacement = await HtmlCapture.OpenAsync(source, canvas, cancellation, fastCapture, pixelScale, outputRotation);
             try
             {
                 return (replacement, await ReadAsync(replacement));
@@ -752,8 +774,9 @@ public partial class MainWindow
         try
         {
             token.ThrowIfCancellationRequested();
-            // 合成后的画面由 H.264 输出，先清除设备上可能遮住视频的旧前景。
-            session.ShowOverlay(DisplayFrameProcessor.CreateBlankOverlay(active.Device.Model));
+            // 0123 已在打开会话时完成无应答清层，其他型号等待 PNG 清层应答。
+            if (active.Device.Model.ProductId != 0x0123)
+                session.ShowOverlay(DisplayFrameProcessor.CreateBlankOverlay(active.Device.Model));
             await LiveVideoEncoder.RunAsync(session, capture, frame =>
             {
                 byte[] prepared = prepareFrame(frame);

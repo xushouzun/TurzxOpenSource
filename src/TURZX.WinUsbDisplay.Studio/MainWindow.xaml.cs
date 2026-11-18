@@ -647,7 +647,8 @@ public partial class MainWindow : Window
             {
                 token.ThrowIfCancellationRequested();
                 using var display = OpenPlaybackDevice(device, key, rotation, token, hasVideo: true);
-                display.ShowOverlay(DisplayFrameProcessor.CreateBlankOverlay(device.Model));
+                if (device.Model.ProductId != 0x0123)
+                    display.ShowOverlay(DisplayFrameProcessor.CreateBlankOverlay(device.Model));
                 display.PlayVideo(stream, fps, true, token, () => Dispatcher.Invoke(() =>
                 {
                     if (!token.IsCancellationRequested)
@@ -891,7 +892,7 @@ public partial class MainWindow : Window
             session.StopPlayback();
             token.ThrowIfCancellationRequested();
             // 此面板的前景已旋转到设备原生画面方向。
-            byte firmwareRotation = UsesNativeLandscapeRaster(device.Model, rotation) ? (byte)0 : rotation;
+            byte firmwareRotation = FirmwareRotation(device.Model, rotation);
             session.SetRotation(firmwareRotation);
             if (token.WaitHandle.WaitOne(50))
                 token.ThrowIfCancellationRequested();
@@ -899,6 +900,9 @@ public partial class MainWindow : Window
                 session.SynchronizeClock();
             session.ShowDefaultClock(false);
             token.ThrowIfCancellationRequested();
+            // 0123 的 PNG 清层只写入，不应等待不存在的应答。旧 PNG 图层会遮住后续 JPEG。
+            if (device.Model.ProductId == 0x0123)
+                session.ClearOverlayWithoutResponse(DisplayFrameProcessor.CreateBlankOverlay(device.Model), token);
             // Studio 发送普通 H.264 数据块，省略旧版同步启动时间戳。
             if (hasVideo && (device.Model.ProductId is 0x0046 or 0x0055))
                 session.SetVideoClockSync(false);
