@@ -1,0 +1,30 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify build, tests, coverage, CLI and browser
+        shell: pwsh
+        run: ./tools/verify-project.ps1
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ github.sha }}
+          path: artifacts/verification/
+          if-no-files-found: error

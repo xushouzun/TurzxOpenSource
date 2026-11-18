@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj" />
+    <ProjectReference Include="../../src/TURZX.WinUsbDisplay.Media/TURZX.WinUsbDisplay.Media.csproj" />
+    <ProjectReference Include="../../src/TURZX.WinUsbDisplay.Windows/TURZX.WinUsbDisplay.Windows.csproj" />
+  </ItemGroup>
+</Project>

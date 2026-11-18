@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="Code Coverage">
+        <Configuration>
+          <Format>Cobertura</Format>
+          <CodeCoverage>
+            <!-- Each test suite reports the product assemblies actually loaded by that suite. -->
+            <ModulePaths>
+              <Include>
+                <ModulePath>.*[\\/]TURZX\.WinUsbDisplay(\.Media|\.Windows|\.Studio)?\.dll$</ModulePath>
+              </Include>
+            </ModulePaths>
+            <EnableStaticManagedInstrumentation>True</EnableStaticManagedInstrumentation>
+            <EnableDynamicManagedInstrumentation>True</EnableDynamicManagedInstrumentation>
+            <EnableStaticNativeInstrumentation>False</EnableStaticNativeInstrumentation>
+            <EnableDynamicNativeInstrumentation>False</EnableDynamicNativeInstrumentation>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

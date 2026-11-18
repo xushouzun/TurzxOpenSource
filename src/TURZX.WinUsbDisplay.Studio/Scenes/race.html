@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>霓虹赛车</title>
+  <link rel="stylesheet" href="scene.css">
+</head>
+<body>
+  <canvas class="stage" aria-label="穿过霓虹山谷的自动赛车"></canvas>
+  <script src="scene.js"></script>
+  <script>
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    const rivals = ["#ff709f", "#b5a0ff", "#ffe095"];
+
+    // 用指定颜色填充顶点定义的多边形。
+    function polygon(points, color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 按指定位置、车宽和颜色绘制车辆。
+    function car(x, y, width, color) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(width, width);
+      ctx.fillStyle = "#11172e";
+      ctx.fillRect(-.5, -.02, .17, .22);
+      ctx.fillRect(.33, -.02, .17, .22);
+      polygon([[-.48,.12], [-.43,-.08], [-.28,-.12], [-.19,-.31], [.19,-.31], [.28,-.12], [.43,-.08], [.48,.12]], color);
+      polygon([[-.23,-.12], [-.15,-.26], [.15,-.26], [.23,-.12]], "#263150");
+      ctx.fillStyle = "#fff2c0";
+      ctx.fillRect(-.40, .015, .15, .055);
+      ctx.fillRect(.25, .015, .15, .055);
+      ctx.restore();
+    }
+
+    // 根据动画时间绘制道路、交通和车辆。
+    function render(t) {
+      resizeScene(canvas);
+      const w = canvas.width, h = canvas.height;
+      if (!w || !h) return;
+      ctx.clearRect(0, 0, w, h);
+      const width = Math.min(w * .94, h * 1.85);
+      const height = Math.min(h * .76, width * .72);
+      ctx.save();
+      ctx.translate((w - width) / 2, (h - height) / 2);
+      ctx.scale(width, height);
+      ctx.beginPath();
+      ctx.roundRect(0, 0, 1, 1, .035);
+      ctx.clip();
+
+      const sky = ctx.createLinearGradient(0, 0, 0, .53);
+      sky.addColorStop(0, "#17152dec");
+      sky.addColorStop(1, "#68416eed");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, 1, .53);
+      const sunset = ctx.createLinearGradient(0, .10, 0, .51);
+      sunset.addColorStop(0, "#ffe593");
+      sunset.addColorStop(1, "#ff609a");
+      ctx.fillStyle = sunset;
+      ctx.beginPath(); ctx.ellipse(.5, .37, .13, .23, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#794063";
+      for (let i = 0; i < 4; i++) ctx.fillRect(.36, .38 + i * .037, .28, .009 + i * .003);
+      polygon([[0,.47],[.12,.23],[.20,.40],[.31,.31],[.43,.53],[.60,.54],[.72,.29],[.83,.43],[.91,.22],[1,.43],[1,.58],[0,.58]], "#242447");
+      ctx.fillStyle = "#241c3ae8";
+      ctx.fillRect(0, .53, 1, .47);
+
+      const bend = Math.sin(t * .72) * .12;
+      // 计算给定透视深度下的道路中心线。
+      const center = depth => .5 + bend * (1 - depth) ** 2;
+      // 将深度和横向位置映射为道路上的横坐标。
+      const edge = (depth, lane) => center(depth) + lane * (.025 + .44 * depth);
+      // 将透视深度映射成画面的纵坐标。
+      const y = depth => .53 + depth * .48;
+      for (let i = 0; i < 22; i++) {
+        const near = i / 22, far = (i + 1) / 22;
+        polygon([[edge(near,-1),y(near)],[edge(near,1),y(near)],[edge(far,1),y(far)],[edge(far,-1),y(far)]], "#141a30");
+      }
+      for (let i = 0; i < 13; i++) {
+        const phase = (i / 13 + t * .57) % 1;
+        const near = phase ** 2;
+        const far = Math.min(1, near + .015 + near * .035);
+        for (const lane of [-1, -.33, .33, 1]) {
+          const thickness = .018 + near * .014;
+          polygon([[edge(near,lane-thickness),y(near)],[edge(near,lane+thickness),y(near)],
+            [edge(far,lane+thickness),y(far)],[edge(far,lane-thickness),y(far)]], Math.abs(lane) === 1 ? "#ff79cf" : "#88c7f5");
+        }
+      }
+
+      const traffic = rivals.map((color, i) => {
+        const depth = ((t * (.13 + i * .01) + i * .33) % 1) ** 1.7;
+        return { color, depth, lane: (i - 1) * .63 + Math.sin(t * .9 + i * 2) * .13 };
+      }).sort((a, b) => a.depth - b.depth);
+      for (const rival of traffic)
+        car(edge(rival.depth, rival.lane), y(rival.depth), .018 + rival.depth * .095, rival.color);
+      car(edge(.88, .48 * Math.sin(t * 1.15)), y(.88), .14, "#65f6db");
+      ctx.restore();
+    }
+    animateScene(render);
+  </script>
+</body>
+</html>

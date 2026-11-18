@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj" />
+    <Project Path="src/TURZX.WinUsbDisplay.Media/TURZX.WinUsbDisplay.Media.csproj" />
+    <Project Path="src/TURZX.WinUsbDisplay.Windows/TURZX.WinUsbDisplay.Windows.csproj" />
+    <Project Path="src/TURZX.WinUsbDisplay.Cli/TURZX.WinUsbDisplay.Cli.csproj" />
+    <Project Path="src/TURZX.WinUsbDisplay.Studio/TURZX.WinUsbDisplay.Studio.csproj" />
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/SdkDiscover/SdkDiscover.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/TURZX.WinUsbDisplay.Smoke/TURZX.WinUsbDisplay.Smoke.csproj" />
+    <Project Path="tools/TURZX.WinUsbDisplay.Probe/TURZX.WinUsbDisplay.Probe.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TURZX.WinUsbDisplay.Tests/TURZX.WinUsbDisplay.Tests.csproj" />
+    <Project Path="tests/TURZX.WinUsbDisplay.Windows.Tests/TURZX.WinUsbDisplay.Windows.Tests.csproj" />
+  </Folder>
+</Solution>

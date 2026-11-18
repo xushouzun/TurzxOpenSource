@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>像素烟花</title>
+  <link rel="stylesheet" href="scene.css">
+</head>
+<body>
+  <canvas class="stage" aria-label="自动循环的像素烟花表演"></canvas>
+  <script src="scene.js"></script>
+  <script>
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    const colors = ["#7df5df", "#ff83c9", "#ffd57b", "#a89fff", "#84cfff"];
+    const origin = [.31, .70, .47, .76, .26, .57];
+    const sparks = Array.from({ length: 64 }, (_, i) => {
+      const angle = i * Math.PI * 2 / 64;
+      const speed = .065 + (i * 29 % 17) * .008;
+      return { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed, size: i % 5 === 0 ? 2 : 1 };
+    });
+
+    // 在像素网格对齐的位置绘制粒子。
+    function pixel(x, y, size, color, alpha, unit) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.round(x / unit) * unit, Math.round(y / unit) * unit, size * unit, size * unit);
+    }
+
+    // 按动画时间渲染不同阶段的烟花和粒子。
+    function render(t) {
+      resizeScene(canvas);
+      const w = canvas.width, h = canvas.height;
+      const s = Math.min(w, h);
+      if (!s) return;
+      ctx.clearRect(0, 0, w, h);
+      const unit = Math.max(1, Math.round(s / 190));
+      for (let i = 0; i < 28; i++) {
+        const x = w * ((i * 53 + 7) % 113) / 113;
+        const y = h * (.12 + ((i * 17 + 9) % 97) / 123);
+        pixel(x, y, 1, "#b1c9ff", .19 + .16 * Math.sin(t * 2 + i), unit);
+      }
+
+      const interval = 1.38;
+      const current = Math.floor(t / interval);
+      for (let n = Math.max(0, current - 2); n <= current; n++) {
+        const age = t - n * interval;
+        const x = w * origin[n % origin.length];
+        const centerY = h * (.29 + (n * 11 % 9) * .041);
+        const color = colors[n % colors.length];
+        if (age < .72) {
+          const progress = age / .72;
+          const y = h * .91 + (centerY - h * .91) * progress;
+          for (let tail = 5; tail >= 0; tail--)
+            pixel(x + Math.sin(progress * 12 - tail) * unit * 2, y + unit * tail * 2,
+              tail ? 1 : 2, tail ? color : "#fff8e7", 1 - tail * .15, unit);
+          continue;
+        }
+
+        const burst = age - .72;
+        if (burst >= 1.75) continue;
+        const reach = 1 - Math.exp(-burst * 2.6);
+        const fade = Math.max(0, 1 - burst / 1.75);
+        if (burst < .15)
+          pixel(x, centerY, 3, "#fff8e7", 1 - burst / .15, unit);
+        sparks.forEach((spark, i) => {
+          const stretch = n % 3 === 1 ? (i % 2 ? .65 : 1.25) : 1;
+          const dx = spark.x * reach * stretch * s;
+          const dy = (spark.y * reach * stretch + .031 * burst ** 2) * s;
+          const glint = .72 + .28 * Math.sin(burst * 20 + i * 1.4);
+          pixel(x + dx, centerY + dy, spark.size, i % 8 === 0 ? "#fff4de" : color, fade * glint, unit);
+          if (i % 3 === 0)
+            pixel(x + dx * .87, centerY + dy * .87, 1, color, fade * .32, unit);
+        });
+      }
+      ctx.globalAlpha = 1;
+    }
+    animateScene(render);
+  </script>
+</body>
+</html>

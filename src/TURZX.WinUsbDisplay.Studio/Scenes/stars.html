@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>霓虹星轨</title>
+  <link rel="stylesheet" href="scene.css">
+</head>
+<body>
+  <canvas class="stage" aria-label="行星、霓虹星环和流星雨"></canvas>
+  <script src="scene.js"></script>
+  <script>
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    const stars = Array.from({ length: 55 }, (_, i) => ({
+      x: ((i * 67 + 13) % 127) / 127,
+      y: ((i * 47 + 8) % 131) / 131,
+      phase: i * 2.39
+    }));
+    // 绘制星空、行星和沿时间变化的光环。
+    function render(t) {
+      resizeScene(canvas);
+      const w = canvas.width, h = canvas.height, s = Math.min(w, h);
+      if (!s) return;
+      ctx.clearRect(0, 0, w, h);
+      stars.forEach((star, i) => {
+        ctx.fillStyle = "rgba(209,225,255," + (.38 + .3 * Math.sin(t * 1.6 + star.phase)) + ")";
+        ctx.fillRect(star.x * w, star.y * h, Math.max(1, s * (i % 8 ? .002 : .004)), Math.max(1, s * .002));
+      });
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(s, s);
+      const hue = 210 + 33 * Math.sin(t * .24);
+      const halo = ctx.createRadialGradient(0, 0, .06, 0, 0, .45);
+      halo.addColorStop(0, "hsla(" + hue + ",95%,65%,.36)");
+      halo.addColorStop(1, "hsla(" + hue + ",95%,55%,0)");
+      ctx.fillStyle = halo;
+      ctx.fillRect(-.45, -.45, .9, .9);
+      const ringAngle = -.38 + .14 * Math.sin(t * .35);
+      // 绘制给定角度范围内的多层光环。
+      function ring(start, end) {
+        for (let i = 0; i < 5; i++) {
+          ctx.strokeStyle = "hsla(" + (hue + i * 17) + ",96%,72%," + (.30 + i * .09) + ")";
+          ctx.lineWidth = i % 2 ? .004 : .008;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, .255 + i * .034, .071 + i * .01, ringAngle, start, end);
+          ctx.stroke();
+        }
+      }
+      ring(Math.PI, Math.PI * 2);
+      const planet = ctx.createRadialGradient(-.09, -.10, .015, 0, 0, .202);
+      planet.addColorStop(0, "#f8c0ff");
+      planet.addColorStop(.34, "hsl(" + (hue + 41) + ",82%,62%)");
+      planet.addColorStop(.75, "#242451");
+      planet.addColorStop(1, "#0c1530");
+      ctx.fillStyle = planet;
+      ctx.beginPath(); ctx.arc(0, 0, .198, 0, Math.PI * 2); ctx.fill();
+      ring(0, Math.PI);
+      for (let i = 0; i < 3; i++) {
+        const a = t * (.63 + i * .18) + i * 2.5;
+        const x = Math.cos(a) * (.32 + i * .026);
+        const y = Math.sin(a) * (.16 + i * .012);
+        ctx.fillStyle = ["#b4ffee", "#ffaeeb", "#8de2ff"][i];
+        ctx.beginPath(); ctx.arc(x, y, .007 + i * .002, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      for (let i = 0; i < 4; i++) {
+        const phase = (t * .46 + i * .22) % 2.5;
+        if (phase > 1.25) continue;
+        const x = w * (1.13 - phase), y = h * (.05 + i * .18) + phase * s * .22;
+        const tail = ctx.createLinearGradient(x, y, x + s * .22, y - s * .054);
+        tail.addColorStop(0, "#e3fbff");
+        tail.addColorStop(1, "#80e7ff00");
+        ctx.strokeStyle = tail;
+        ctx.lineWidth = Math.max(1, s * .004);
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s * .22, y - s * .054); ctx.stroke();
+      }
+    }
+    // 在浏览器每次刷新时渲染，让 30 FPS 的捕捉流程能取得新帧。
+    animateScene(render, 0);
+  </script>
+</body>
+</html>

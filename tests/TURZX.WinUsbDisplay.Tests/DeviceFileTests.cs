@@ -1,0 +1,302 @@
+using System.Buffers.Binary;
+using System.ComponentModel;
+using System.Text;
+using Xunit;
+
+namespace TURZX.WinUsbDisplay.Tests;
+
+/// <summary>验证启动配置、设备路径和目录应答处理。</summary>
+public class DeviceFileTests
+{
+    /// <summary>验证启动配置使用 Win207 要求的字段顺序。</summary>
+    [Fact]
+    public void StartupConfigurationUsesWin207WireFieldOrder()
+    {
+        byte[] args = DisplaySession.EncodeStartupConfiguration(66, 100, 2, 3, true, 1);
+        Assert.Equal(new byte[] { 25, 2, 0, 3, 0, 1, 1 }, args);
+    }
+
+    /// <summary>验证路径长度编码和保留字节。</summary>
+    [Fact]
+    public void EncodesPathLengthAndReservedBytes()
+    {
+        const string path = "/usr/data/video/a.h264";
+        byte[] args = DisplaySession.EncodeDevicePath(path);
+        Assert.Equal(path.Length, BinaryPrimitives.ReadInt32BigEndian(args));
+        Assert.Equal(new byte[4], args[4..8]);
+        Assert.Equal(path, Encoding.ASCII.GetString(args[8..]));
+    }
+
+    /// <summary>验证无法按设备协议编码的路径会被拒绝。</summary>
+    [Theory]
+    [InlineData("relative.jpg")]
+    [InlineData("/usr/data/../a.jpg")]
+    [InlineData("/usr/data/图.jpg")]
+    public void RejectsUnrepresentablePaths(string path) =>
+        Assert.Throws<ArgumentException>(() => DisplaySession.EncodeDevicePath(path));
+
+    /// <summary>验证填充应答和不存在的目录能正确解析。</summary>
+    [Fact]
+    public void ParsesPaddedListingsAndMissingDirectories()
+    {
+        Assert.Equal(new[] { "one.jpg", "图.jpg" },
+            DisplaySession.ParseDeviceFileList("dir:/file:one.jp\0g/图.jpg/../one.jpg/\0"));
+        Assert.Empty(DisplaySession.ParseDeviceFileList("nodir-createdone\0"));
+        Assert.Empty(DisplaySession.ParseDeviceFileList(new string('\0', 512)));
+        Assert.Equal(new[] { "nodir-createdone.png" }, DisplaySession.ParseDeviceFileList("file:nodir-createdone.png/"));
+        Assert.Throws<DeviceResponseException>(() => DisplaySession.ParseDeviceFileList("unexpected"));
+    }
+
+    [Fact]
+    public void DirectoryCreationFailurePreservesTheFirmwareReply()
+    {
+        const string status = "result:nodir-createfailed";
+        string reply = status.PadRight(512, '\0') + status.PadRight(512, '\0');
+        var error = Assert.Throws<DeviceResponseException>(() => DisplaySession.ParseDeviceFileList(reply));
+
+        Assert.Equal(DeviceResponseFailure.DirectoryCreationFailed, error.Failure);
+        Assert.Equal(Encoding.UTF8.GetBytes(reply), error.Response.ToArray());
+        Assert.Equal(new[] { status + ".png" }, DisplaySession.ParseDeviceFileList($"file:{status}.png/"));
+    }
+
+    /// <summary>验证不完整目录会忽略末尾未结束的文件名。</summary>
+    [Fact]
+    public void PartialDirectoryExcludesAnUnterminatedFilename()
+    {
+        const string reply = "dir:/file:one.jpg/two.jpg";
+        Assert.Equal(new[] { "one.jpg", "two.jpg" }, DisplaySession.ParseDeviceFileList(reply));
+        Assert.Equal(new[] { "one.jpg" }, DisplaySession.ParseDeviceFileList(reply, isComplete: false));
+        Assert.Empty(DisplaySession.ParseDeviceFileList("dir:/file:one.jpg", isComplete: false));
+    }
+
+    /// <summary>验证重复出现的目录元数据不会成为文件条目。</summary>
+    [Theory]
+    [InlineData("dir:/file:one.jpg/dir:/file:one.jpg/", true)]
+    [InlineData("dir:/file:one.jpgdir:/file:one.jpg/", true)]
+    [InlineData("dir:/file:one.jpg/dir:/", false)]
+    public void RepeatedDirectoryMetadataIsNotAFile(string reply, bool complete)
+    {
+        Assert.Equal(new[] { "one.jpg" }, DisplaySession.ParseDeviceFileList(reply, complete));
+    }
+
+    /// <summary>验证取消后不会继续请求目录分段。</summary>
+    [Fact]
+    public void CancelledDirectoryReadDoesNotRequestAnotherReply()
+    {
+        using var cancellation = new CancellationTokenSource();
+        int requests = 0;
+        var error = Assert.Throws<OperationCanceledException>(() => DisplaySession.CollectDirectoryReplies(() =>
+        {
+            requests++;
+            cancellation.Cancel();
+            return "file:one.jpg/"u8.ToArray();
+        }, cancellation.Token));
+
+        Assert.Equal(cancellation.Token, error.CancellationToken);
+        Assert.Equal(1, requests);
+    }
+
+    /// <summary>验证目录读取中途超时可返回已收集的数据。</summary>
+    [Fact]
+    public void DirectoryTimeoutAfterAReplyStillReturnsPartialData()
+    {
+        byte[] payload = "file:one.jpg/"u8.ToArray();
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies(() => requests++ == 0
+            ? payload : throw new DeviceResponseException(DeviceResponseFailure.NoData, "No data."),
+            CancellationToken.None);
+
+        Assert.False(result.IsComplete);
+        Assert.Equal(payload, result.Response);
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public void DirectoryReplyLimitDoesNotConfirmATruncatedFilename()
+    {
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies(() => ++requests switch
+        {
+            1 => "dir:/file:one.jpg/"u8.ToArray(),
+            20 => "two.jp"u8.ToArray(),
+            _ => new byte[512]
+        }, CancellationToken.None);
+
+        Assert.Equal(20, requests);
+        Assert.False(result.IsComplete);
+        Assert.Equal(new[] { "one.jpg" },
+            DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    [Fact]
+    public void RepeatedDirectoryHeaderConfirmsThePreviousListing()
+    {
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies(() => ++requests switch
+        {
+            1 => "dir:/file:one.jpg"u8.ToArray(),
+            2 => "dir:/file:one"u8.ToArray(),
+            _ => throw new DeviceResponseException(DeviceResponseFailure.NoData, "No data.")
+        }, CancellationToken.None);
+
+        Assert.True(result.IsComplete);
+        Assert.Equal(new[] { "one.jpg" },
+            DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    [Fact]
+    public void AnotherDirectoryReplyCannotConfirmOrAddFilesToTheFirstListing()
+    {
+        var replies = new Queue<byte[]>(
+        [
+            "dir:/current/file:one.jpg/truncated"u8.ToArray(),
+            "dir:/other/file:unrelated.jpg/"u8.ToArray(),
+            "dir:/current/file:one.jpg/two.jpg/"u8.ToArray()
+        ]);
+        var result = DisplaySession.CollectDirectoryReplies(() => replies.TryDequeue(out var reply)
+            ? reply
+            : throw new DeviceResponseException(DeviceResponseFailure.NoData, "No data."), CancellationToken.None);
+
+        Assert.False(result.IsComplete);
+        Assert.Equal(new[] { "one.jpg" },
+            DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    [Fact]
+    public void UnrecognizedReplyCannotMasqueradeAsAnEmptyDirectory()
+    {
+        Assert.Throws<DeviceResponseException>(() => DisplaySession.ParseDeviceFileList("error:nodir-createdone"));
+    }
+
+    [Fact]
+    public void StopPlaybackTriesRemainingLayersAndReportsFailures()
+    {
+        var first = new DeviceResponseException(DeviceResponseFailure.NoData, "No response.");
+        var second = new IOException("Short write.");
+        bool stoppedLast = false;
+        var error = Assert.Throws<AggregateException>(() => DisplaySession.StopPlaybackLayers(
+            () => throw first, () => throw second, () => stoppedLast = true));
+
+        Assert.True(stoppedLast);
+        Assert.Equal(new Exception[] { first, second }, error.InnerExceptions);
+    }
+
+    [Fact]
+    public void StopPlaybackDoesNotSendMoreCommandsAfterDisconnect()
+    {
+        var disconnected = new Win32Exception(1167);
+        var error = Assert.Throws<Win32Exception>(() => DisplaySession.StopPlaybackLayers(
+            () => throw disconnected, () => throw new InvalidOperationException("Unexpected command.")));
+
+        Assert.Same(disconnected, error);
+    }
+
+    [Fact]
+    public void AllPaddingDoesNotConfirmAnEmptyDirectory()
+    {
+        byte[] padding = new byte[512];
+        var result = DisplaySession.CollectDirectoryReplies(() => padding, CancellationToken.None);
+
+        Assert.False(result.IsComplete);
+        Assert.Equal(20 * padding.Length, result.Response.Length);
+        Assert.Empty(DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    [Fact]
+    public void ExplicitMissingDirectoryCanReturnACompleteEmptyListing()
+    {
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies(() =>
+            requests++ == 0 ? "nodir-createdone"u8.ToArray() : new byte[512], CancellationToken.None);
+
+        Assert.True(result.IsComplete);
+        Assert.Empty(DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    [Theory]
+    [InlineData("nodir-createdone")]
+    [InlineData("result:nodir-createdone")]
+    public void RepeatedEmptyDirectoryRepliesConfirmAnEmptyListing(string status)
+    {
+        byte[] reply = Encoding.UTF8.GetBytes(status.PadRight(512, '\0'));
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies(() =>
+            requests++ < 2 ? reply : new byte[512], CancellationToken.None);
+
+        Assert.True(result.IsComplete);
+        Assert.Empty(DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    /// <summary>验证取消后不再重试查询或复位管道。</summary>
+    [Fact]
+    public void CancelledVerifiedQueryDoesNotRetryOrResetThePipe()
+    {
+        using var cancellation = new CancellationTokenSource();
+        int requests = 0;
+        int resets = 0;
+        var error = Assert.Throws<OperationCanceledException>(() => DisplaySession.RetryVerifiedQuery(new Lock(), 10, 2, () =>
+        {
+            requests++;
+            cancellation.Cancel();
+            throw new Win32Exception(121);
+        }, () => resets++, cancellation.Token));
+
+        Assert.Equal(cancellation.Token, error.CancellationToken);
+        Assert.Equal(1, requests);
+        Assert.Equal(0, resets);
+    }
+
+    [Fact]
+    public void VerifiedQueryResetsOutputAfterAWriteTimeoutOnTheSecondAttempt()
+    {
+        var gate = new Lock();
+        byte[] reply = [10, 1];
+        int requests = 0;
+        bool reset = false;
+        byte[] received = DisplaySession.RetryVerifiedQuery(gate, 10, 2, () =>
+        {
+            if (++requests == 1)
+                throw new DeviceResponseException(DeviceResponseFailure.NoData, "Read timed out.");
+            if (requests == 2)
+                throw new Win32Exception(121);
+            Assert.True(reset);
+            return reply;
+        }, () =>
+        {
+            Assert.True(gate.IsHeldByCurrentThread);
+            Assert.Equal(2, requests);
+            reset = true;
+        }, CancellationToken.None);
+
+        Assert.Same(reply, received);
+        Assert.Equal(3, requests);
+    }
+
+    /// <summary>验证写入恢复期间仍独占请求管道。</summary>
+    [Fact]
+    public void VerifiedQueryKeepsThePipeLockedDuringWriteRecovery()
+    {
+        var gate = new Lock();
+        byte[] reply = [10, 1];
+        int requests = 0;
+        int resets = 0;
+        byte[] received = DisplaySession.RetryVerifiedQuery(gate, 10, 2, () =>
+        {
+            Assert.True(gate.IsHeldByCurrentThread);
+            return requests++ switch
+            {
+                0 => throw new Win32Exception(121),
+                1 => [50, 1],
+                _ => reply
+            };
+        }, () =>
+        {
+            Assert.True(gate.IsHeldByCurrentThread);
+            resets++;
+        }, CancellationToken.None);
+
+        Assert.Same(reply, received);
+        Assert.Equal(3, requests);
+        Assert.Equal(1, resets);
+    }
+}

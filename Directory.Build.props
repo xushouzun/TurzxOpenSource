@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <Company>TURZX</Company>
+    <Product>TURZX WinUSB Display</Product>
+    <AssemblyTitle>$(MSBuildProjectName)</AssemblyTitle>
+  </PropertyGroup>
+</Project>

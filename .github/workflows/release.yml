@@ -1,0 +1,58 @@
+name: Windows preview
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify and package Studio and SDK
+        shell: pwsh
+        run: ./tools/verify-project.ps1 -Package
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ github.sha }}
+          path: artifacts/verification/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TURZX-Studio-win-x64
+          path: artifacts/TURZX-Studio-win-x64.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TURZX-WinUsbDisplay-SDK
+          path: artifacts/TURZX-WinUsbDisplay-SDK.zip
+          if-no-files-found: error
+
+  draft:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: package
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create preview release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$env:GITHUB_REF_NAME" artifacts/TURZX-Studio-win-x64.zip artifacts/TURZX-WinUsbDisplay-SDK.zip --draft --prerelease --generate-notes --verify-tag

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>复古弹球</title>
+  <link rel="stylesheet" href="scene.css">
+</head>
+<body>
+  <canvas class="stage" aria-label="青色与粉色球拍自动对战，先得七分获胜"></canvas>
+  <script src="scene.js"></script>
+  <script>
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    const colors = ["#6bffe1", "#ff8dd9"];
+    const score = [0, 0], paddles = [.5, .5];
+    const trail = [], sparks = [];
+    // 将球拍等对象的坐标限制在给定范围内。
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    let ball, serveAt = 0, winner = -1, hitAt = -1;
+    // 从球场中央向指定方向发球，并清除上一球的轨迹。
+    function serve(direction) {
+      ball = { x: .5, y: .53, dx: direction * .61, dy: (Math.random() < .5 ? -1 : 1) * (.18 + Math.random() * .17) };
+      trail.length = 0;
+    }
+    serve(1);
+
+    // 在碰撞位置生成向四周散开的粒子。
+    function burst(x, y, color) {
+      for (let i = 0; i < 14; i++) {
+        const a = Math.random() * Math.PI * 2;
+        sparks.push({ x, y, dx: Math.cos(a) * .52, dy: Math.sin(a) * .52, life: .55, color });
+      }
+    }
+
+    // 推进比赛状态并处理碰撞、计分和再次发球。
+    function update(t, dt) {
+      if (t < serveAt) return;
+      if (winner >= 0) {
+        score.fill(0);
+        winner = -1;
+      }
+      for (let i = 0; i < 2; i++) {
+        const active = i === Number(ball.dx > 0);
+        const target = active ? ball.y + .16 * Math.sin(t * 3.4 + i * 2.8) : .52;
+        paddles[i] = clamp(paddles[i] + clamp(target - paddles[i], -.76 * dt, .76 * dt), .12, .88);
+      }
+      trail.unshift({ x: ball.x, y: ball.y });
+      if (trail.length > 8) trail.pop();
+      const previousX = ball.x;
+      ball.x += ball.dx * dt;
+      ball.y += ball.dy * dt;
+      if (ball.y < .035 || ball.y > .965) {
+        ball.y = clamp(ball.y, .035, .965);
+        ball.dy *= -1;
+      }
+      const side = Number(ball.dx > 0);
+      const edge = side ? .9 : .1;
+      if ((side ? previousX < edge && ball.x >= edge : previousX > edge && ball.x <= edge)
+          && Math.abs(ball.y - paddles[side]) <= .124) {
+        ball.x = edge;
+        ball.dx = (side ? -1 : 1) * Math.min(Math.abs(ball.dx) * 1.11, 1.45);
+        ball.dy = clamp((ball.y - paddles[side]) * 5, -.8, .8);
+        hitAt = t;
+        burst(edge, ball.y, colors[side]);
+      }
+      if (ball.x < 0 || ball.x > 1) {
+        const scorer = Number(ball.x < 0);
+        burst(clamp(ball.x, 0, 1), ball.y, colors[scorer]);
+        score[scorer]++;
+        winner = score[scorer] === 7 ? scorer : -1;
+        serveAt = t + (winner >= 0 ? 2.8 : .7);
+        serve(scorer ? 1 : -1);
+      }
+    }
+
+    // 根据窗口尺寸绘制球场、球拍和当前比赛状态。
+    function render(t, dt) {
+      resizeScene(canvas);
+      const w = canvas.width, h = canvas.height;
+      const width = Math.min(w * .94, h * 1.54);
+      const height = width / 1.66;
+      if (!width) return;
+      update(t, dt);
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate((w - width) / 2, (h - height) / 2);
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, "#172347f5");
+      gradient.addColorStop(1, "#21122fec");
+      ctx.fillStyle = gradient;
+      ctx.strokeStyle = t - hitAt < .13 ? "#fff1ff" : "#7387cc";
+      ctx.lineWidth = Math.max(1, width * .002);
+      ctx.beginPath(); ctx.roundRect(0, 0, width, height, width * .035); ctx.fill(); ctx.stroke(); ctx.clip();
+      ctx.strokeStyle = "#b3bbff20";
+      ctx.beginPath();
+      for (let i = 1; i < 12; i++) {
+        ctx.moveTo(width * i / 12, height * .27); ctx.lineTo(width * i / 12, height);
+      }
+      for (let i = 0; i < 6; i++) {
+        const y = height * (.27 + i * .14);
+        ctx.moveTo(0, y); ctx.lineTo(width, y);
+      }
+      ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.font = "bold " + width * .086 + "px Consolas, monospace";
+      for (let i = 0; i < 2; i++) {
+        ctx.fillStyle = colors[i];
+        ctx.fillText(score[i], width * (i ? .65 : .35), height * .187);
+      }
+      ctx.fillStyle = "#d8dfff";
+      ctx.fillText(":", width / 2, height * .17);
+      const fieldY = height * .27, fieldH = height * .72;
+      ctx.translate(0, fieldY);
+      ctx.fillStyle = "#c1cbff65";
+      for (let i = 0; i < 12; i++)
+        ctx.fillRect(width * .497, fieldH * i / 12, width * .006, fieldH * .039);
+      for (let i = 0; i < 2; i++) {
+        ctx.fillStyle = colors[i];
+        ctx.fillRect(width * (i ? .906 : .079), fieldH * (paddles[i] - .108), width * .015, fieldH * .216);
+      }
+      trail.forEach(({x, y}, i) => {
+        ctx.globalAlpha = .38 * (1 - i / trail.length);
+        ctx.fillStyle = "#e0d9ff";
+        ctx.fillRect(x * width - width * .005, y * fieldH - width * .005, width * .01, width * .01);
+      });
+      ctx.globalAlpha = 1;
+      if (t >= serveAt || Math.sin(t * 14) > 0) {
+        ctx.fillStyle = "#fff7de";
+        ctx.fillRect(ball.x * width - width * .009, ball.y * fieldH - width * .009, width * .018, width * .018);
+      }
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const spark = sparks[i];
+        spark.life -= dt;
+        if (spark.life <= 0) { sparks.splice(i, 1); continue; }
+        spark.x += spark.dx * dt; spark.y += spark.dy * dt;
+        ctx.globalAlpha = spark.life / .55;
+        ctx.fillStyle = spark.color;
+        ctx.fillRect(spark.x * width, spark.y * fieldH, width * .008, width * .008);
+      }
+      ctx.globalAlpha = 1;
+      if (winner >= 0) {
+        ctx.fillStyle = "#10172ceb";
+        ctx.fillRect(width * .21, fieldH * .29, width * .58, fieldH * .42);
+        ctx.fillStyle = colors[winner];
+        ctx.font = "bold " + width * .055 + "px Consolas, monospace";
+        ctx.fillText("MATCH WON", width * .5, fieldH * .56);
+      }
+      ctx.restore();
+    }
+    animateScene(render);
+  </script>
+</body>
+</html>

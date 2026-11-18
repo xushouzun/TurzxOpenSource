@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数字时钟</title>
+  <link rel="stylesheet" href="scene.css">
+  <style>
+    body { display: grid; place-items: center; }
+    main { position: relative; display: grid; place-items: center; width: 86vmin; height: 86vmin; isolation: isolate; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .readout { position: relative; text-align: center; text-shadow: 0 .4vmin 2vmin #0b1646; }
+    time { display: block; font: 700 15vmin/1 var(--mono); letter-spacing: -.09em; padding-right: .09em; }
+    p { margin: 2vmin 0 0; color: #c3caff; font-size: 3.8vmin; }
+    small { display: block; margin-top: 2.5vmin; color: #76ffe5; font: 600 4vmin var(--mono); }
+  </style>
+</head>
+<body>
+  <main>
+    <canvas aria-hidden="true"></canvas>
+    <div class="readout"><time></time><p></p><small></small></div>
+  </main>
+  <script src="scene.js"></script>
+  <script>
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    const clock = document.querySelector("time");
+    const date = document.querySelector("p");
+    const seconds = document.querySelector("small");
+    const dateFormat = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+    // 将时、分、秒补齐为两位数字。
+    const pad = value => String(value).padStart(2, "0");
+    let currentSecond = -1;
+    // 按当前窗口大小绘制时钟，同时刷新时间显示。
+    function render(t) {
+      const size = Math.max(1, Math.round(canvas.clientWidth));
+      if (canvas.width !== size || canvas.height !== size) canvas.width = canvas.height = size;
+      ctx.clearRect(0, 0, size, size);
+      const center = size / 2;
+      const now = new Date();
+      const second = now.getSeconds();
+      if (second !== currentSecond) {
+        currentSecond = second;
+        clock.textContent = pad(now.getHours()) + ":" + pad(now.getMinutes());
+        seconds.textContent = pad(second);
+        date.textContent = dateFormat.format(now);
+      }
+      const dial = ctx.createRadialGradient(center, size * .39, 0, center, center, center);
+      dial.addColorStop(0, "#283663ef");
+      dial.addColorStop(.82, "#0e1838ee");
+      dial.addColorStop(1, "#11193200");
+      ctx.fillStyle = dial;
+      ctx.beginPath(); ctx.arc(center, center, center, 0, Math.PI * 2); ctx.fill();
+      const progress = (second + now.getMilliseconds() / 1000) / 60;
+      for (let i = 0; i < 60; i++) {
+        const angle = i / 60 * Math.PI * 2 - Math.PI / 2;
+        const outer = size * .455;
+        const inner = outer - size * (i % 5 === 0 ? .027 : .012);
+        ctx.strokeStyle = i / 60 <= progress ? "#8affdb" : "#6d78a775";
+        ctx.lineWidth = size * (i % 5 === 0 ? .0045 : .0028);
+        ctx.beginPath();
+        ctx.moveTo(center + Math.cos(angle) * inner, center + Math.sin(angle) * inner);
+        ctx.lineTo(center + Math.cos(angle) * outer, center + Math.sin(angle) * outer);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 3; i++) {
+        const angle = t * (.38 + .1 * i) + i * 2.1;
+        const radius = size * (.35 + .013 * i);
+        const x = center + Math.cos(angle) * radius, y = center + Math.sin(angle) * radius;
+        ctx.fillStyle = ["#ffb5ea", "#9cc5ff", "#8affdb"][i];
+        ctx.beginPath(); ctx.arc(x, y, size * .006, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    animateScene(render);
+  </script>
+</body>
+</html>

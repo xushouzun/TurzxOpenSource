@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Windows.Tests" />
+    <EmbeddedResource Include="Localization/*.json" LogicalName="Studio.Localization.%(Filename)%(Extension)" />
+    <None Include="../../docs/developer-guide*.md;../../docs/win207-protocol*.md"
+          Link="docs/%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Scenes/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <ProjectReference Include="../TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj" />
+    <ProjectReference Include="../TURZX.WinUsbDisplay.Media/TURZX.WinUsbDisplay.Media.csproj" />
+    <ProjectReference Include="../TURZX.WinUsbDisplay.Windows/TURZX.WinUsbDisplay.Windows.csproj" />
+    <Using Include="TURZX.WinUsbDisplay.Windows" />
+  </ItemGroup>
+  <Target Name="IncludeRuntimeNotices" AfterTargets="ComputeFilesToPublish" Condition="'$(SelfContained)' == 'true'">
+    <ItemGroup>
+      <_RuntimeNotice Include="%(ResolvedRuntimePack.PackageDirectory)/LICENSE.TXT;%(ResolvedRuntimePack.PackageDirectory)/THIRD-PARTY-NOTICES.TXT"
+                      Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'">
+        <FrameworkName>%(ResolvedRuntimePack.FrameworkName)</FrameworkName>
+      </_RuntimeNotice>
+      <_RuntimeNotice Include="%(ResolvedRuntimePack.PackageDirectory)/LICENSE"
+                      Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.WindowsDesktop.App'">
+        <FrameworkName>%(ResolvedRuntimePack.FrameworkName)</FrameworkName>
+      </_RuntimeNotice>
+      <ResolvedFileToPublish Include="@(_RuntimeNotice)">
+        <RelativePath>licenses/%(_RuntimeNotice.FrameworkName)/%(_RuntimeNotice.Filename)%(_RuntimeNotice.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>

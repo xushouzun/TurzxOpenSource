@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup Condition="!Exists('../../src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj')">
+    <Reference Include="TURZX.WinUsbDisplay">
+      <HintPath>../../lib/TURZX.WinUsbDisplay.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('../../src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj')">
+    <ProjectReference Include="../../src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj" />
+  </ItemGroup>
+</Project>

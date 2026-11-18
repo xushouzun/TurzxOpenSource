@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj" />
+    <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Studio" />
+    <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Probe" />
+    <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Windows.Tests" />
+  </ItemGroup>
+</Project>

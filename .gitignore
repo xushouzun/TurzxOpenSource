@@ -1,0 +1,25 @@
+**/bin/
+**/obj/
+.vs/
+*.user
+.env
+*_wpftmp.csproj
+/artifacts/
+/.agents/
+
+# 本地预览与交付过程记录
+/README.html
+/docs/delivery-*.md
+
+# 测试结果与覆盖率产物
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# 本地开发配置
+*.suo
+.env.*
+!.env.example
+!.env.sample
+!.env.template

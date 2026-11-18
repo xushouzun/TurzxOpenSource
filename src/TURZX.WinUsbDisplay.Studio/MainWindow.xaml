@@ -1,0 +1,842 @@
+<Window x:Class="TURZX.WinUsbDisplay.Studio.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:TURZX.WinUsbDisplay.Studio"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+    ThemeMode="Dark"
+    Title="TURZX WinUSB Display Studio" Width="1080" Height="690" MinWidth="820" MinHeight="560"
+    WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen" Background="#10141F" Foreground="#F3F6FE"
+    FontFamily="Segoe UI Variable, Segoe UI, Global User Interface" UseLayoutRounding="True">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="38" ResizeBorderThickness="6" GlassFrameThickness="0"
+                            CornerRadius="0" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <Window.Resources>
+        <Style x:Key="Muted" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#A8B4CC" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#27344C" />
+            <Setter Property="Foreground" Value="#F3F6FE" />
+            <Setter Property="Padding" Value="15,10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" CornerRadius="9" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Opacity" Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Surface" Property="Opacity" Value="0.38" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="MinWidth" Value="48" />
+            <Setter Property="Foreground" Value="#F3F6FE" />
+            <Setter Property="Background" Value="#192338" />
+            <Setter Property="BorderBrush" Value="#536586" />
+            <Setter Property="CaretBrush" Value="White" />
+        </Style>
+        <Style x:Key="WorkspaceTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#B8C6E0" />
+            <Setter Property="Margin" Value="0,0,5,0" />
+            <Setter Property="Padding" Value="13,7" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Tab" CornerRadius="7" Padding="{TemplateBinding Padding}" Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="1">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Tab" Property="Background" Value="#202C43" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Tab" Property="Background" Value="#293B63" />
+                                <Setter TargetName="Tab" Property="BorderBrush" Value="#455E8B" />
+                                <Setter Property="Foreground" Value="#F3F6FE" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Tab" Property="BorderBrush" Value="#A8BFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="44" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Border Background="#171D2A" BorderBrush="#29354C" BorderThickness="0,0,0,1" Padding="15,0,7,0">
+            <DockPanel>
+                <local:CaptionButtons DockPanel.Dock="Right" VerticalAlignment="Center" />
+                <ComboBox x:Name="LanguageSelector" DockPanel.Dock="Right" Width="132" Height="30" VerticalAlignment="Center"
+                          Padding="9,0,8,0" VerticalContentAlignment="Center"
+                          shell:WindowChrome.IsHitTestVisibleInChrome="True" Margin="0,0,10,0"
+                          AutomationProperties.Name="{DynamicResource L.InterfaceLanguage}" ToolTip="{DynamicResource L.ChangeInterfaceLanguage}"
+                          DisplayMemberPath="DisplayName" SelectedValuePath="Code" SelectionChanged="OnLanguageChanged" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Viewbox Width="22" Height="22" Margin="0,0,9,0" Focusable="False" IsHitTestVisible="False">
+                        <Canvas Width="24" Height="24">
+                            <Rectangle Canvas.Left="2" Canvas.Top="4" Width="20" Height="13" RadiusX="3" RadiusY="3"
+                                       Fill="#28415C" Stroke="#8BDDF1" StrokeThickness="1.5" />
+                            <Path Data="M 5,10 L 8,10 10,7 13,13 16,10 19,10 M 12,17 L 12,20 M 8,20 L 16,20"
+                                  Stroke="#8BDDF1" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock Text="TURZX WinUSB Display Studio" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Border Grid.Row="1" Padding="20,6,20,6" Background="#131927" BorderBrush="#263249" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <Grid DockPanel.Dock="Right" Width="280" VerticalAlignment="Center">
+                    <ComboBox x:Name="WorkspaceDevice" TextSearch.TextPath="Label" SelectionChanged="OnDeviceChanged"
+                              ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="{DynamicResource L.TargetDisplay}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding PlaybackLabel}" Foreground="#B4CBFC" Margin="8,0,0,0" />
+                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                        <ComboBox.ItemContainerStyle>
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="ToolTip" Value="{Binding Details}" />
+                            </Style>
+                        </ComboBox.ItemContainerStyle>
+                    </ComboBox>
+                    <TextBlock Text="{DynamicResource L.TargetDisplay}" VerticalAlignment="Center" Margin="10,0,28,0"
+                               Foreground="#A8B4CC" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedIndex, ElementName=WorkspaceDevice}" Value="-1">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="MediaNav" GroupName="Workspace" Style="{StaticResource WorkspaceTab}"
+                                 Content="{DynamicResource L.Media}" Checked="OnWorkspaceChanged" />
+                    <RadioButton x:Name="AdvancedNav" GroupName="Workspace" Style="{StaticResource WorkspaceTab}"
+                                 Content="{DynamicResource L.AdvancedControls}" Checked="OnWorkspaceChanged" />
+                    <RadioButton x:Name="CommandsNav" GroupName="Workspace" Style="{StaticResource WorkspaceTab}"
+                                 Content="{DynamicResource L.DeviceCommands}" Checked="OnWorkspaceChanged" />
+                    <RadioButton x:Name="DocsNav" GroupName="Workspace" Style="{StaticResource WorkspaceTab}"
+                                 Content="{DynamicResource L.Documentation}" Checked="OnWorkspaceChanged" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Grid x:Name="MediaPage" Grid.Row="2" Margin="20,14,20,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="22" />
+                <ColumnDefinition Width="350" />
+            </Grid.ColumnDefinitions>
+            <Border CornerRadius="18" BorderBrush="#384D75" BorderThickness="1" Padding="18">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#263F74" Offset="0" />
+                        <GradientStop Color="#131A2D" Offset="0.7" />
+                        <GradientStop Color="#173648" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border x:Name="PreviewSurface" Background="#8510182B" BorderBrush="#486399" BorderThickness="1"
+                            CornerRadius="12" Margin="0,0,0,8" ClipToBounds="True"
+                            MouseLeftButtonDown="OnPreviewDragStart" MouseMove="OnPreviewDragMove"
+                            MouseLeftButtonUp="OnPreviewDragEnd" LostMouseCapture="OnPreviewDragLost">
+                        <Grid Margin="9">
+                            <local:PreviewCanvas x:Name="HomeCanvas" />
+                        </Grid>
+                    </Border>
+                    <WrapPanel x:Name="LayoutBar" Grid.Row="1" HorizontalAlignment="Center">
+                        <ComboBox x:Name="LayoutLayer" MinWidth="78" VerticalAlignment="Center" Margin="0,0,6,0"
+                                  SelectionChanged="OnLayoutLayerChanged" AutomationProperties.Name="{DynamicResource L.AdjustLayer}">
+                            <ComboBoxItem x:Name="ForegroundLayer" Content="{DynamicResource L.Foreground}" />
+                            <ComboBoxItem x:Name="BackgroundLayer" Content="{DynamicResource L.Background}" />
+                        </ComboBox>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <Button x:Name="ZoomOut" Content="−" Tag="Out" Click="OnLayoutZoom" Padding="8,3"
+                                    ToolTip="{DynamicResource L.ZoomOut}" AutomationProperties.Name="{DynamicResource L.ZoomOut}" />
+                            <TextBlock x:Name="ZoomValue" Text="100%" Width="38" TextAlignment="Center" VerticalAlignment="Center" />
+                            <Button x:Name="ZoomIn" Content="+" Tag="In" Click="OnLayoutZoom" Padding="8,3"
+                                    ToolTip="{DynamicResource L.ZoomIn}" AutomationProperties.Name="{DynamicResource L.ZoomIn}" />
+                        </StackPanel>
+                        <ComboBox x:Name="LayoutMode" MinWidth="128" VerticalAlignment="Center" SelectionChanged="OnLayoutModeChanged"
+                                  AutomationProperties.Name="{DynamicResource L.CanvasLayout}">
+                            <ComboBoxItem Content="{DynamicResource L.FitCenter}" />
+                            <ComboBoxItem Content="{DynamicResource L.Fill}" />
+                        </ComboBox>
+                        <Button x:Name="LayoutLeft" Content="←" Tag="L" Click="OnLayoutNudge" Padding="9,3" Margin="8,0,0,0"
+                                ToolTip="{DynamicResource L.MoveLeft}" AutomationProperties.Name="{DynamicResource L.MoveLeft}" />
+                        <Button x:Name="LayoutUp" Content="↑" Tag="U" Click="OnLayoutNudge" Padding="9,3" Margin="4,0,0,0"
+                                ToolTip="{DynamicResource L.MoveUp}" AutomationProperties.Name="{DynamicResource L.MoveUp}" />
+                        <Button x:Name="LayoutDown" Content="↓" Tag="D" Click="OnLayoutNudge" Padding="9,3" Margin="4,0,0,0"
+                                ToolTip="{DynamicResource L.MoveDown}" AutomationProperties.Name="{DynamicResource L.MoveDown}" />
+                        <Button x:Name="LayoutRight" Content="→" Tag="R" Click="OnLayoutNudge" Padding="9,3" Margin="4,0,0,0"
+                                ToolTip="{DynamicResource L.MoveRight}" AutomationProperties.Name="{DynamicResource L.MoveRight}" />
+                        <Button x:Name="LayoutCenter" Content="{DynamicResource L.Center}" Click="OnLayoutCenter" Padding="9,3" Margin="8,0,0,0"
+                                AutomationProperties.Name="{DynamicResource L.Center}" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" CornerRadius="18" Background="#191F30" BorderBrush="#303B53" BorderThickness="1" Padding="13">
+                <Border.Resources>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Setter Property="Padding" Value="11,6" />
+                    </Style>
+                </Border.Resources>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ScrollViewer x:Name="MediaSettingsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  BorderThickness="0" FocusVisualStyle="{x:Null}" Focusable="False">
+                        <StackPanel>
+                            <StackPanel x:Name="LiveSettings">
+                                <TextBlock Text="{DynamicResource L.ForegroundSource}" FontWeight="SemiBold" />
+                                <ComboBox x:Name="LiveSource" SelectionChanged="OnLiveSourceChanged" Margin="0,5,0,0"
+                                          AutomationProperties.Name="{DynamicResource L.ForegroundSource}">
+                                    <ComboBoxItem Content="{DynamicResource L.LiveHtmlRendering}" />
+                                    <ComboBoxItem Content="{DynamicResource L.CaptureWindow}" />
+                                    <ComboBoxItem Content="{DynamicResource L.ChooseImage}" />
+                                    <ComboBoxItem Content="{DynamicResource L.CaptureWebsite}" />
+                                    <ComboBoxItem Content="{DynamicResource L.ImageSlideshow}" />
+                                </ComboBox>
+                                <DockPanel x:Name="ForegroundImageRow" Visibility="Collapsed" Margin="0,5,0,0">
+                                    <Button x:Name="Browse" Content="{DynamicResource L.Browse}" DockPanel.Dock="Right"
+                                            Click="OnBrowse" Margin="8,0,0,0" />
+                                    <Button x:Name="ClearForegroundImage" DockPanel.Dock="Right" Content="×" Click="OnClearForeground"
+                                            Visibility="Collapsed" Padding="8,5" Margin="6,0,0,0"
+                                            ToolTip="{DynamicResource L.ClearForeground}"
+                                            AutomationProperties.Name="{DynamicResource L.ClearForeground}" />
+                                    <TextBox x:Name="ForegroundImagePath" IsReadOnly="True"
+                                             AutomationProperties.Name="{DynamicResource L.ForegroundImage}" />
+                                </DockPanel>
+                                <StackPanel x:Name="SlideshowSettings" Visibility="Collapsed" Margin="0,5,0,0">
+                                    <DockPanel>
+                                        <Button Content="{DynamicResource L.SelectImages}" DockPanel.Dock="Right"
+                                                Click="OnBrowseSlideshow" Margin="8,0,0,0" />
+                                        <Button x:Name="ClearSlideshow" DockPanel.Dock="Right" Content="×" Click="OnClearForeground"
+                                                Visibility="Collapsed" Padding="8,5" Margin="6,0,0,0"
+                                                ToolTip="{DynamicResource L.ClearForeground}"
+                                                AutomationProperties.Name="{DynamicResource L.ClearForeground}" />
+                                        <TextBox x:Name="SlideshowSelection" IsReadOnly="True"
+                                                 AutomationProperties.Name="{DynamicResource L.ImageSlideshow}" />
+                                    </DockPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <TextBlock Text="{DynamicResource L.IntervalSeconds}" VerticalAlignment="Center" />
+                                        <TextBox x:Name="SlideshowInterval" Text="5" Width="64" Margin="8,0,0,0"
+                                                 TextChanged="OnLocalPreviewInputChanged"
+                                                 AutomationProperties.Name="{DynamicResource L.IntervalSeconds}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <DockPanel x:Name="LiveFileRow" Visibility="Collapsed" Margin="0,5,0,0">
+                                    <Button Content="{DynamicResource L.Browse}" DockPanel.Dock="Right" Click="OnBrowseLiveSource" Margin="8,0,0,0" />
+                                    <Button x:Name="ClearHtmlSource" DockPanel.Dock="Right" Content="×" Click="OnClearForeground"
+                                            Visibility="Collapsed" Padding="8,5" Margin="6,0,0,0"
+                                            ToolTip="{DynamicResource L.ClearForeground}"
+                                            AutomationProperties.Name="{DynamicResource L.ClearForeground}" />
+                                    <TextBox x:Name="LivePath" TextChanged="OnLocalPreviewInputChanged"
+                                             AutomationProperties.Name="{DynamicResource L.ForegroundFileOrPageURL}" />
+                                </DockPanel>
+                                <DockPanel x:Name="LiveUrlRow" Visibility="Collapsed" Margin="0,5,0,0">
+                                    <Button x:Name="ClearWebSource" DockPanel.Dock="Right" Content="×" Click="OnClearForeground"
+                                            Visibility="Collapsed" Padding="8,5" Margin="6,0,0,0"
+                                            ToolTip="{DynamicResource L.ClearForeground}"
+                                            AutomationProperties.Name="{DynamicResource L.ClearForeground}" />
+                                    <TextBox x:Name="LiveUrl" TextChanged="OnLocalPreviewInputChanged"
+                                             ToolTip="{DynamicResource L.InvalidWebUrl}"
+                                             AutomationProperties.Name="{DynamicResource L.CaptureWebsite}" />
+                                </DockPanel>
+                                <ComboBox x:Name="HtmlScenes" Visibility="Collapsed" Margin="0,6,0,0" SelectedIndex="0"
+                                          SelectionChanged="OnPreset"
+                                          AutomationProperties.Name="{DynamicResource L.Scenes}">
+                                    <ComboBoxItem Content="{DynamicResource L.SelectExampleScene}" IsEnabled="False" />
+                                    <ComboBoxItem Content="{DynamicResource L.PixelRobot}" Tag="default.html" />
+                                    <ComboBoxItem Content="{DynamicResource L.DigitalClock}" Tag="clock.html" />
+                                    <ComboBoxItem Content="{DynamicResource L.NeonTrails}" Tag="stars.html" />
+                                    <ComboBoxItem Content="{DynamicResource L.RetroPong}" Tag="pong.html" />
+                                    <ComboBoxItem Content="{DynamicResource L.NeonRacing}" Tag="race.html" />
+                                    <ComboBoxItem Content="{DynamicResource L.PixelFireworks}" Tag="fireworks.html" />
+                                </ComboBox>
+                                <DockPanel x:Name="LiveWindowRow" Visibility="Collapsed" Margin="0,5,0,0">
+                                    <Button Content="{DynamicResource L.RefreshWindows}" DockPanel.Dock="Right" Click="OnRefreshWindows" Margin="8,0,0,0" />
+                                    <Button x:Name="ClearCaptureWindow" DockPanel.Dock="Right" Content="×" Click="OnClearForeground"
+                                            Visibility="Collapsed" Padding="8,5" Margin="6,0,0,0"
+                                            ToolTip="{DynamicResource L.ClearForeground}"
+                                            AutomationProperties.Name="{DynamicResource L.ClearForeground}" />
+                                    <ComboBox x:Name="LiveWindow" SelectionChanged="OnLocalPreviewInputChanged" AutomationProperties.Name="{DynamicResource L.WindowToCapture}" />
+                                </DockPanel>
+                                <StackPanel x:Name="CaptureRegionRow" Orientation="Horizontal" Visibility="Collapsed" Margin="0,6,0,0">
+                                    <Button x:Name="SelectCaptureRegion" Content="{DynamicResource L.SelectRegion}" Click="OnSelectCaptureRegion" />
+                                    <Button x:Name="ResetCaptureRegion" Content="{DynamicResource L.RestoreFullFrame}"
+                                            Click="OnResetCaptureRegion" Margin="8,0,0,0" />
+                                </StackPanel>
+                                <TextBlock Text="{DynamicResource L.OptionalBackgroundMedia}" FontWeight="SemiBold" Margin="0,7,0,0" />
+                                <DockPanel Margin="0,5,0,0">
+                                    <Button DockPanel.Dock="Right" Content="FFmpeg" Click="OnConfigureFfmpeg" Margin="6,0,0,0"
+                                            ToolTip="{DynamicResource L.ChooseTheFFmpegExecutable}" />
+                                    <Button DockPanel.Dock="Right" Content="{DynamicResource L.Browse}" Click="OnBrowseBackground" Margin="8,0,0,0" />
+                                    <Button x:Name="ClearBackground" DockPanel.Dock="Right" Content="×" Click="OnClearBackground"
+                                            Visibility="Collapsed" Padding="8,5" Margin="6,0,0,0"
+                                            ToolTip="{DynamicResource L.ClearBackground}"
+                                            AutomationProperties.Name="{DynamicResource L.ClearBackground}" />
+                                    <TextBox x:Name="BackgroundPath" TextChanged="OnBackgroundPreviewInputChanged" AutomationProperties.Name="{DynamicResource L.BackgroundFile}" />
+                                </DockPanel>
+                                <StackPanel x:Name="CaptureRateRow"
+                                            Orientation="Horizontal" Visibility="Collapsed" Margin="0,6,0,0">
+                                    <TextBlock Text="{DynamicResource L.CaptureFPS}" VerticalAlignment="Center" Margin="0,0,7,0" />
+                                    <Grid>
+                                        <TextBox x:Name="CaptureRate" Text="{x:Static local:MainWindow.DefaultCaptureRateText}" MinWidth="48" TextChanged="OnLocalPreviewInputChanged"
+                                                 AutomationProperties.Name="{DynamicResource L.CaptureFPS}"
+                                                 AutomationProperties.HelpText="{DynamicResource L.InvalidFrameRate}" />
+                                        <TextBlock Text="1–60" Margin="9,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Text, ElementName=CaptureRate}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </StackPanel>
+                                <TextBlock x:Name="BackgroundFrameRateSummary" Style="{StaticResource Muted}" Margin="0,4,0,0"
+                                           Visibility="Collapsed" ToolTip="{DynamicResource L.BackgroundRateLimitHint}" />
+                            </StackPanel>
+                            <Border Background="#27344C" CornerRadius="8" Padding="8,4" Margin="0,7,0,0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{DynamicResource L.Brightness}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <DockPanel Grid.Column="1" Margin="0,2">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Value, ElementName=BrightnessValue, StringFormat={}{0:0}%}"
+                                                   Width="34" Margin="8,0,0,0" TextAlignment="Right" VerticalAlignment="Center" />
+                                        <Slider x:Name="BrightnessValue" Minimum="0" Maximum="100" Value="66"
+                                                TickFrequency="1" IsSnapToTickEnabled="True" LargeChange="10" SmallChange="1"
+                                                ValueChanged="OnBrightnessChanged" VerticalAlignment="Center"
+                                                AutomationProperties.Name="{DynamicResource L.BrightnessPercentage}" />
+                                    </DockPanel>
+                                    <TextBlock Grid.Row="1" Text="{DynamicResource L.Orientation}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <ComboBox Grid.Row="1" Grid.Column="1" Margin="0,2" HorizontalAlignment="Left" x:Name="Rotation" SelectedIndex="0" MinWidth="72" VerticalAlignment="Center"
+                                              SelectionChanged="OnRotationChanged"
+                                              ToolTip="{DynamicResource L.AutoSendOrientationHint}" AutomationProperties.Name="{DynamicResource L.ScreenOrientation}">
+                                        <ComboBoxItem Content="0°" />
+                                        <ComboBoxItem Content="90°" />
+                                        <ComboBoxItem Content="180°" />
+                                        <ComboBoxItem Content="270°" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <StackPanel Grid.Row="1">
+                        <Border Height="1" Margin="0,8,0,0" Background="#38465F" />
+                        <TextBlock x:Name="OutputHint" Style="{StaticResource Muted}" TextWrapping="Wrap"
+                                   Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
+                        <UniformGrid Columns="2" Margin="0,8,0,0">
+                            <Button x:Name="Send" Background="#A8BFFF" Foreground="#102041" Content="{DynamicResource L.StartPlayback}"
+                                    Click="OnSend" IsEnabled="False" Padding="6,7" Margin="0,0,4,0" />
+                            <Button x:Name="Stop" Content="{DynamicResource L.StopPlayback}" Click="OnStop" IsEnabled="False"
+                                    ToolTip="{DynamicResource L.StopPlaybackHint}" Padding="6,7" Margin="4,0,0,0" />
+                        </UniformGrid>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+        <Grid x:Name="AdvancedPage" Grid.Row="2" Margin="20,10,20,0" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="1.1*" />
+            </Grid.ColumnDefinitions>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          BorderThickness="0" FocusVisualStyle="{x:Null}" Focusable="False">
+                <StackPanel>
+                    <Border Background="#191F30" CornerRadius="12" BorderBrush="#2A344B" BorderThickness="1" Padding="12">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button x:Name="ReadAdvancedStatus" DockPanel.Dock="Right" Click="OnReadAdvancedStatus"
+                                        Content="{DynamicResource L.ReadDeviceStatus}" IsEnabled="False" Margin="12,0,0,0" />
+                                <TextBlock Text="{DynamicResource L.DeviceStatus}" FontSize="16" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
+                            <TextBlock x:Name="AdvancedStatusResult" Margin="0,8,0,0" Height="108" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#191F30" CornerRadius="12" BorderBrush="#2A344B"
+                            BorderThickness="1" Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource L.UsbOutputBenchmark}" FontSize="16" FontWeight="SemiBold" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <ComboBox x:Name="SendBenchmarkMode" SelectedIndex="0" Margin="0,0,6,4"
+                                          AutomationProperties.Name="{DynamicResource L.BenchmarkWorkload}">
+                                    <ComboBoxItem Content="{DynamicResource L.StaticTestImage}" />
+                                    <ComboBoxItem Content="{DynamicResource L.BuiltInAnimation}" />
+                                </ComboBox>
+                                <Button x:Name="StartSendBenchmark" Content="{DynamicResource L.Run10SecondTest}"
+                                        Click="OnStartSendBenchmark" Padding="10,5" Margin="0,0,6,4" IsEnabled="False" />
+                                <Button x:Name="StopSendBenchmark" Content="{DynamicResource L.StopTest}"
+                                        Click="OnStop" Padding="10,5" Margin="0,0,0,4" IsEnabled="False" />
+                            </WrapPanel>
+                            <TextBlock x:Name="SendBenchmarkResult" Style="{StaticResource Muted}" Margin="0,3,0,0"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="AdvancedClockPanel" Background="#191F30" CornerRadius="12" BorderBrush="#2A344B"
+                            BorderThickness="1" Padding="12" Margin="0,8,0,0" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource L.FirmwareClock}" FontSize="16" FontWeight="SemiBold" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <Button Content="{DynamicResource L.SetAndShowTheFirmwareClock}" Click="OnShowAdvancedClock" Margin="0,0,8,0" />
+                                <Button Content="{DynamicResource L.HideTheFirmwareClock}" Click="OnStopAdvancedClock" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#191F30" CornerRadius="12" BorderBrush="#2A344B" BorderThickness="1"
+                            Padding="12" Margin="0,8,0,0">
+                        <DockPanel>
+                            <Button x:Name="RestartDeviceButton" DockPanel.Dock="Right" Content="{DynamicResource L.RestartDisplay}"
+                                    Click="OnRestartDevice" Margin="8,0,0,0" IsEnabled="False" />
+                            <TextBlock Text="{DynamicResource L.DeviceMaintenance}" FontSize="16" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Border x:Name="StartupSettingsPanel" Background="#191F30" CornerRadius="12" BorderBrush="#2A344B"
+                        BorderThickness="1" Padding="12" Margin="0,0,0,8" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource L.OfflineAndStartup}" FontSize="16" FontWeight="SemiBold" />
+                        <WrapPanel Margin="0,6,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,10,6">
+                                <TextBlock Text="{DynamicResource L.StartupDisplay}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox x:Name="StartupModeSelect" MinWidth="112"
+                                          AutomationProperties.Name="{DynamicResource L.StartupDisplay}">
+                                    <ComboBoxItem Content="{DynamicResource L.DeviceDefault}" />
+                                    <ComboBoxItem Content="{DynamicResource L.StartupImage}" />
+                                    <ComboBoxItem Content="{DynamicResource L.StartupAnimation}" />
+                                </ComboBox>
+                            </StackPanel>
+                            <CheckBox x:Name="KeepAwakeOffline" Content="{DynamicResource L.KeepScreenOnWhileOffline}"
+                                      VerticalAlignment="Center" Margin="0,0,10,6" />
+                            <StackPanel x:Name="OfflineClockDirectionPanel" Orientation="Horizontal" Margin="0,0,10,6" Visibility="Collapsed">
+                                <TextBlock Text="{DynamicResource L.OfflineClockOrientation}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox x:Name="OfflineClockDirectionSelect" MinWidth="72"
+                                          AutomationProperties.Name="{DynamicResource L.OfflineClockOrientation}">
+                                    <ComboBoxItem Content="0°" />
+                                    <ComboBoxItem Content="90°" />
+                                    <ComboBoxItem Content="180°" />
+                                    <ComboBoxItem Content="270°" />
+                                </ComboBox>
+                            </StackPanel>
+                            <Button Content="{DynamicResource L.WriteStartupSettings}" Click="OnSaveStartupSettings" Margin="0,0,0,6" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+                <Border x:Name="DeviceMediaCard" Grid.Row="1" Background="#191F30" CornerRadius="12"
+                        BorderBrush="#2A344B" BorderThickness="1" Padding="12">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="{DynamicResource L.OnDeviceMedia}" FontSize="16" FontWeight="SemiBold" />
+                        <WrapPanel DockPanel.Dock="Top" Margin="0,6,0,0">
+                            <ComboBox x:Name="DeviceMediaFolder" MinWidth="110" SelectionChanged="OnDeviceMediaFolderChanged"
+                                      AutomationProperties.Name="{DynamicResource L.OnDeviceMediaFolder}" Margin="0,0,6,6">
+                                <ComboBoxItem Tag="/tmp/sdcard/mmcblk0p1/video/" Content="{DynamicResource L.SDCardVideos}" />
+                                <ComboBoxItem Tag="/tmp/sdcard/mmcblk0p1/img/" Content="{DynamicResource L.SDCardImages}" />
+                                <ComboBoxItem Tag="/usr/data/video/" Content="{DynamicResource L.InternalVideos}" />
+                                <ComboBoxItem Tag="/usr/data/img/" Content="{DynamicResource L.InternalImages}" />
+                            </ComboBox>
+                            <Button x:Name="RefreshDeviceMedia" Content="{DynamicResource L.RefreshFiles}"
+                                    Click="OnRefreshDeviceMedia" Margin="0,0,6,6" />
+                            <Button x:Name="PlayDeviceMedia" Content="{DynamicResource L.PlaySelected}"
+                                    Click="OnPlayDeviceMedia" Margin="0,0,6,6" />
+                            <Button x:Name="DeleteDeviceMedia" Content="{DynamicResource L.DeleteSelected}"
+                                    Click="OnDeleteDeviceMedia" Margin="0,0,6,6" />
+                            <Button x:Name="StopDeviceMedia" Content="{DynamicResource L.StopPlayback}" Click="OnStop" Margin="0,0,0,6" />
+                        </WrapPanel>
+                        <TextBlock x:Name="DeviceMediaPath" DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,2,0,4" />
+                        <TextBlock x:Name="DeviceMediaMessage" DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,4"
+                                   AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
+                        <ListBox x:Name="DeviceMediaFiles" Margin="0,2,0,0"
+                                 AutomationProperties.Name="{DynamicResource L.OnDeviceMediaFiles}"
+                                 SelectionChanged="OnDeviceMediaSelectionChanged" />
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+        <Grid x:Name="CommandsPage" Grid.Row="2" Margin="20,14,20,0" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="0.85*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="1.15*" />
+                </Grid.ColumnDefinitions>
+                <Border Background="#191F30" BorderBrush="#303B53" BorderThickness="1" CornerRadius="14" Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="{DynamicResource L.CommandList}" FontSize="18" FontWeight="SemiBold" />
+                        <ListBox x:Name="CommandList" Grid.Row="1" SelectionChanged="OnCommandChanged" Margin="0,10"
+                                 Background="#151D2D" BorderBrush="#354562" Padding="3"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Foreground" Value="#E1E9FC" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="7,2" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="CommandCard" CornerRadius="5" Padding="{TemplateBinding Padding}"
+                                                        BorderThickness="1" BorderBrush="Transparent" Background="Transparent">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="CommandCard" Property="Background" Value="#202C43" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="CommandCard" Property="Background" Value="#293B63" />
+                                                        <Setter TargetName="CommandCard" Property="BorderBrush" Value="#455E8B" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                                        <Setter TargetName="CommandCard" Property="BorderBrush" Value="#A8BFFF" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2,3">
+                                        <TextBlock Text="{Binding ProtocolName}" TextWrapping="Wrap" FontWeight="SemiBold"
+                                                   ToolTip="{Binding ProtocolName}" />
+                                        <TextBlock Foreground="#A8B4CC" FontSize="11" TextWrapping="Wrap">
+                                            <Run Text="{Binding CodeLabel, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Purpose, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <StackPanel Grid.Row="2">
+                            <Border Height="1" Background="#354562" Margin="0,0,0,10" />
+                            <TextBlock x:Name="CommandResult" TextWrapping="Wrap" Foreground="#DCE5F8"
+                                       AutomationProperties.Name="{DynamicResource L.CommandDetailsAndResponse}" />
+                            <Button x:Name="RunCommand" HorizontalAlignment="Right" Content="{DynamicResource L.Run}"
+                                    Click="OnRunCommand" Margin="0,7,0,0" Padding="10,6" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <Border Grid.Column="2" Background="#191F30" BorderBrush="#303B53" BorderThickness="1"
+                        CornerRadius="14" Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="{DynamicResource L.CodeExample}"
+                                    Click="OnShowPacketExample" Padding="9,5" Margin="8,0,0,0" />
+                            <TextBlock Text="{DynamicResource L.Win207PacketConsole}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <StackPanel x:Name="PacketInputs" Grid.Row="1" Margin="0,12,0,8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{DynamicResource L.CommandID}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox x:Name="PacketId" Width="90" TextChanged="OnPacketRequestChanged" ToolTip="{DynamicResource L.DecimalOr0xHexadecimal}" />
+                                <ComboBox x:Name="PacketChannel" MinWidth="158" SelectionChanged="OnPacketRequestChanged" Margin="12,0,0,0" SelectedIndex="0">
+                                    <ComboBoxItem Content="{DynamicResource L.EncryptedWin207}" />
+                                    <ComboBoxItem Content="{DynamicResource L.RawChannel}" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel x:Name="PacketArgumentsRow">
+                                <TextBlock Text="{DynamicResource L.HeaderArgumentsHex}" Margin="0,9,0,4" />
+                                <Grid>
+                                    <TextBox x:Name="PacketArguments" TextChanged="OnPacketRequestChanged" MaxLength="4096" TextWrapping="Wrap" AcceptsReturn="True"
+                                             MinHeight="40" MaxHeight="88" VerticalScrollBarVisibility="Auto"
+                                             ToolTip="{Binding Text, ElementName=PacketArgumentsPlaceholder}"
+                                             AutomationProperties.Name="{DynamicResource L.HeaderArgumentsHex}"
+                                             AutomationProperties.HelpText="{Binding Text, ElementName=PacketArgumentsPlaceholder}" />
+                                    <TextBlock x:Name="PacketArgumentsPlaceholder" Margin="9,6" IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=PacketArguments}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel x:Name="PacketPayloadRow">
+                                <DockPanel Margin="0,9,0,4">
+                                    <Button x:Name="PacketChooseFile" DockPanel.Dock="Right" Content="{DynamicResource L.Browse}"
+                                            Visibility="Collapsed" Click="OnChoosePacketFile" Margin="8,0,0,0" Padding="8,3" />
+                                    <Button x:Name="PacketChooseVideo" DockPanel.Dock="Right" Content="{DynamicResource L.PacketChooseVideo}"
+                                            Visibility="Collapsed" Click="OnChoosePacketVideo" Margin="8,0,0,0" Padding="8,3" />
+                                    <TextBlock x:Name="PacketPayloadLabel" Text="{DynamicResource L.PayloadHexOptional}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <DockPanel x:Name="PacketFileRow" Visibility="Collapsed">
+                                    <Button DockPanel.Dock="Right" Content="{DynamicResource L.Clear}" Click="OnClearPacketFile"
+                                            Margin="8,0,0,0" Padding="8,3" />
+                                    <TextBlock x:Name="PacketFileName" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
+                                <StackPanel x:Name="PacketDevicePathRow" Visibility="Collapsed">
+                                    <TextBlock Text="{DynamicResource L.PacketDevicePath}" Margin="0,4,0,4" />
+                                    <TextBox x:Name="PacketDevicePath" MaxLength="484" TextChanged="OnPacketRequestChanged"
+                                             AutomationProperties.Name="{DynamicResource L.PacketDevicePath}" />
+                                </StackPanel>
+                                <Grid x:Name="PacketPayloadHexEditor">
+                                    <TextBox x:Name="PacketPayload" TextChanged="OnPacketRequestChanged" MaxLength="65536" TextWrapping="Wrap" AcceptsReturn="True"
+                                             MinHeight="40" MaxHeight="88" VerticalScrollBarVisibility="Auto"
+                                             ToolTip="{Binding Text, ElementName=PacketPayloadPlaceholder}"
+                                             AutomationProperties.Name="{DynamicResource L.PayloadHexOptional}"
+                                             AutomationProperties.HelpText="{Binding Text, ElementName=PacketPayloadPlaceholder}" />
+                                    <TextBlock x:Name="PacketPayloadPlaceholder" Margin="9,6" IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=PacketPayload}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </StackPanel>
+                            <TextBlock x:Name="PacketArgumentsHint" Text="{DynamicResource L.PacketArgumentsHelp}"
+                                       Style="{StaticResource Muted}" Margin="0,8,0,0" />
+                            <Button x:Name="SendPacket" HorizontalAlignment="Right" Content="{DynamicResource L.SendAndRead}"
+                                    Click="OnSendPacket" Background="#A8BFFF" Foreground="#102041" Padding="12,7" Margin="0,10,0,0" />
+                        </StackPanel>
+                        <DockPanel Grid.Row="2">
+                            <TextBlock DockPanel.Dock="Top" Text="{DynamicResource L.DeviceResponse}" FontWeight="SemiBold" Margin="0,0,0,5" />
+                            <TabControl x:Name="PacketResponseTabs">
+                                <TabControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </TabControl.ItemsPanel>
+                                <TabControl.Template>
+                                    <ControlTemplate TargetType="TabControl">
+                                        <DockPanel>
+                                            <ItemsPresenter DockPanel.Dock="Top" Margin="0,0,0,6"
+                                                            KeyboardNavigation.TabIndex="1"
+                                                            KeyboardNavigation.TabNavigation="Once"
+                                                            KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                            <Border Background="#192338" BorderBrush="#344563" BorderThickness="1"
+                                                    CornerRadius="8" Padding="3">
+                                                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
+                                            </Border>
+                                        </DockPanel>
+                                    </ControlTemplate>
+                                </TabControl.Template>
+                                <TabControl.Resources>
+                                    <Style TargetType="TabItem">
+                                        <Setter Property="Foreground" Value="#B8C6E0" />
+                                        <Setter Property="Padding" Value="10,5" />
+                                        <Setter Property="Margin" Value="0,0,5,0" />
+                                        <Setter Property="Cursor" Value="Hand" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="TabItem">
+                                                    <Border x:Name="Surface" CornerRadius="7" Padding="{TemplateBinding Padding}"
+                                                            Background="Transparent" BorderBrush="Transparent" BorderThickness="1">
+                                                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                                          TextElement.FontWeight="SemiBold" />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Surface" Property="Background" Value="#202C43" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Surface" Property="Background" Value="#293B63" />
+                                                            <Setter TargetName="Surface" Property="BorderBrush" Value="#455E8B" />
+                                                            <Setter Property="Foreground" Value="#F3F6FE" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                                            <Setter TargetName="Surface" Property="BorderBrush" Value="#A8BFFF" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </TabControl.Resources>
+                                <TabItem Header="{DynamicResource L.RawDeviceResponse}">
+                                    <TextBox x:Name="PacketResponse" Text="{DynamicResource L.WaitingForARequest}" IsReadOnly="True"
+                                             Background="Transparent" BorderThickness="0" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" />
+                                </TabItem>
+                                <TabItem Header="{DynamicResource L.DecodedResult}">
+                                    <TextBox x:Name="PacketParsedResponse" Text="{DynamicResource L.WaitingForARequest}" IsReadOnly="True"
+                                             Background="Transparent" BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                </TabItem>
+                            </TabControl>
+                        </DockPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+        <Border x:Name="ProtocolPage" Grid.Row="2" Margin="20,14,20,0" Visibility="Collapsed" Background="#191F30"
+                BorderBrush="#384D75" BorderThickness="1" CornerRadius="18" Padding="24">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,10">
+                    <ComboBox x:Name="DocumentationChoice" DockPanel.Dock="Left" Margin="0,0,12,0" MinWidth="180"
+                              SelectedIndex="0" SelectionChanged="OnDocumentationChanged"
+                              AutomationProperties.Name="{DynamicResource L.Documentation}">
+                        <ComboBoxItem Content="{DynamicResource L.Protocol}" />
+                        <ComboBoxItem Content="{DynamicResource L.DLLGuide}" />
+                    </ComboBox>
+                    <Button Content="{DynamicResource L.Copy}" DockPanel.Dock="Right" Click="OnCopyProtocol" Margin="7,0,0,0"
+                            ToolTip="{DynamicResource L.CopyDocumentationHint}" />
+                    <Button Content="{DynamicResource L.FindNext}" DockPanel.Dock="Right" Click="OnFindProtocol" Margin="7,0,0,0" />
+                    <TextBox x:Name="ProtocolQuery" KeyDown="OnProtocolQueryKey" VerticalContentAlignment="Center"
+                             AutomationProperties.Name="{DynamicResource L.ProtocolSearchHint}" />
+                </DockPanel>
+                <RichTextBox x:Name="ProtocolText" Grid.Row="1" IsReadOnly="True" IsDocumentEnabled="True"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                             Background="Transparent" BorderThickness="0" Padding="0"
+                             AutomationProperties.Name="{DynamicResource L.ProtocolDocument}">
+                    <RichTextBox.Template>
+                        <ControlTemplate TargetType="RichTextBox">
+                            <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" BorderThickness="0" Focusable="False"
+                                          VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}"
+                                          HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}" />
+                        </ControlTemplate>
+                    </RichTextBox.Template>
+                </RichTextBox>
+            </Grid>
+        </Border>
+        <DockPanel Grid.Row="3" Margin="21,10,21,11">
+            <Ellipse Width="8" Height="8" Fill="#A8BFFF" Margin="2,0,9,0" VerticalAlignment="Center" />
+            <TextBlock x:Name="PlaybackIndicator" DockPanel.Dock="Right" MaxWidth="470" Margin="12,0,0,0"
+                       Foreground="#B4CBFC" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+            <TextBlock x:Name="Status" Text="{DynamicResource L.FindingDevices}" Style="{StaticResource Muted}" />
+        </DockPanel>
+        <Grid x:Name="VideoStartupProgress" Grid.RowSpan="4" Panel.ZIndex="1" Visibility="Collapsed"
+              Background="#A010141F" KeyboardNavigation.TabNavigation="Cycle">
+            <Border HorizontalAlignment="Center"
+                    VerticalAlignment="Center" Margin="16" Width="440" MinHeight="164" Padding="24"
+                    Background="#191F30" BorderBrush="#486399" BorderThickness="1" CornerRadius="12">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource L.PreparingVideoPlayback}" FontSize="19" FontWeight="SemiBold" />
+                    <TextBlock x:Name="VideoStartupStage" Style="{StaticResource Muted}" FontSize="14" Margin="0,9,0,18"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <ProgressBar Height="6" IsIndeterminate="True" Foreground="#A8BFFF" Background="#27344C" />
+                    <Button x:Name="VideoStartupCancel" HorizontalAlignment="Right" Margin="0,18,0,0" Padding="15,10"
+                            Content="{DynamicResource L.StopPlayback}" Click="OnStop"
+                            IsEnabled="{Binding IsEnabled, ElementName=Stop}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+        <Grid x:Name="ConfirmationOverlay" Grid.RowSpan="4" Panel.ZIndex="2" Visibility="Collapsed"
+              Background="#A010141F" KeyboardNavigation.TabNavigation="Cycle"
+              PreviewKeyDown="OnConfirmationKeyDown">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="420" Margin="16" Padding="20"
+                    Background="#191F30" BorderBrush="#486399" BorderThickness="1" CornerRadius="12">
+                <StackPanel>
+                    <TextBlock x:Name="ConfirmationTitle" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ConfirmationMessage" Style="{StaticResource Muted}" Margin="0,9,0,16"
+                               AutomationProperties.LiveSetting="Assertive" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="ConfirmationCancel" Content="{DynamicResource L.Cancel}"
+                                Click="OnConfirmationChoice" Margin="0,0,8,0" />
+                        <Button x:Name="ConfirmationAccept" Content="{DynamicResource L.Confirm}"
+                                Click="OnConfirmationChoice" Background="#A8BFFF" Foreground="#102041" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+        <Grid x:Name="PacketExampleOverlay" Grid.RowSpan="4" Panel.ZIndex="2" Visibility="Collapsed"
+              Background="#A010141F" KeyboardNavigation.TabNavigation="Cycle" PreviewKeyDown="OnPacketExampleKeyDown">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="640" MaxHeight="490" Margin="20"
+                    Padding="20" Background="#191F30" BorderBrush="#486399" BorderThickness="1" CornerRadius="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="{DynamicResource L.CCodeExample}" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Grid.Row="1" Style="{StaticResource Muted}" Margin="0,8,0,12"
+                               Text="{DynamicResource L.CodeExampleSetup}" />
+                    <TextBox x:Name="PacketExampleCode" Grid.Row="2" IsReadOnly="True" AcceptsReturn="True"
+                             FontFamily="Consolas" MinHeight="160" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                             AutomationProperties.Name="{DynamicResource L.CCodeExample}" />
+                    <DockPanel Grid.Row="3" Margin="0,12,0,0">
+                        <Button x:Name="PacketExampleClose" DockPanel.Dock="Right" Content="{DynamicResource L.Close}"
+                                Click="OnClosePacketExample" Margin="8,0,0,0" />
+                        <Button DockPanel.Dock="Right" Content="{DynamicResource L.CopyCode}" Click="OnCopyPacketExample"
+                                Background="#A8BFFF" Foreground="#102041" />
+                        <TextBlock x:Name="PacketExampleStatus" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                                   Margin="0,0,10,0" AutomationProperties.LiveSetting="Polite" />
+                    </DockPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
