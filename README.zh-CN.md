@@ -6,7 +6,7 @@
 
 把 TURZX USB 副屏变成桌面仪表盘。框选网页或窗口、叠加视频背景、循环播放照片，在 Studio 预览后直接送屏。
 
-**[下载 Windows 预览版](../../releases)** · **[试用示例场景](docs/scenes.md)** · **[查设备兼容性](docs/compatibility.md)** · **[接入 .NET SDK](docs/developer-guide.md)**
+**[下载 Windows 版](../../releases)** · **[试用示例场景](docs/scenes.md)** · **[查设备兼容性](docs/compatibility.md)** · **[接入 .NET SDK](docs/developer-guide.md)**
 
 | 数字时钟 | 霓虹星轨 | 像素烟花 |
 | :---: | :---: | :---: |
@@ -20,17 +20,17 @@
 2. 在「媒体 → 前景来源」选择「HTML 实时渲染」，再从示例场景中选择「数字时钟」。未连接 USB 屏幕也可预览，HTML 渲染需要 Chrome 或 Edge。
 3. 实机送屏需要对应的 WinUSB 驱动和固件维护者提供的封包参数。按 [首次送屏指南](docs/first-display.md) 核对硬件 ID、安装驱动并验证单图输出。
 
-## 实测设备
+## 设备兼容性
 
-| 屏幕 | USB VID:PID | 默认输出尺寸 | 实测记录 |
-| --- | --- | --- | --- |
-| 4.6 寸 | `1CBE:0046` | 320 × 960 | `turzx_0001_0020`，读取固件、恢复本机设置 |
-| 2.1 寸圆屏 | `1CBE:0021` | 480 × 480 | `turzx_0001_0023`，SDK 枚举、读取固件、30 FPS H.264 数据块获设备应答 |
-| 12.3 寸 | `1CBE:0123` | 720 × 1920 | 读取固件，H.264 数据块及图片轮播帧获设备应答 |
-| 7 寸 | `1CBE:0070` | 800 × 1280 | `turzx_0001_0017`，Studio 单图、切屏、HTML 前景叠加 H.264 |
-| 5 寸 | `1CBE:0055` | 720 × 1280 | `turzx_0001_0029`，CLI 送图与停止命令获设备应答，机身存储可写入、列出和删除测试图片 |
+| 屏幕 | USB VID:PID | 默认输出尺寸 |
+| --- | --- | --- |
+| 4.6 寸 | `1CBE:0046` | 320 × 960 |
+| 2.1 寸圆屏 | `1CBE:0021` | 480 × 480 |
+| 12.3 寸 | `1CBE:0123` | 720 × 1920 |
+| 7 寸 | `1CBE:0070` | 800 × 1280 |
+| 5 寸 | `1CBE:0055` | 720 × 1280 |
 
-各型号的固件、设备应答和画面验证详情见[兼容性记录](docs/compatibility.md)。旧款 WCH、CDC、HID 显示协议不在此实现的支持范围内。
+各型号的使用说明见[兼容性记录](docs/compatibility.md)。旧款 WCH、CDC、HID 显示协议不在此实现的支持范围内。
 
 ## 运行
 
@@ -89,11 +89,11 @@ your-renderer.exe | dotnet run --project src/TURZX.WinUsbDisplay.Cli -- frames 0
 
 例如 Python 生成程序可用 `sys.stdout.buffer.write(struct.pack("<I", len(png)) + png)`，每帧写完后调用 `sys.stdout.buffer.flush()`。
 
-### 设备指令与收发调试
+### 设备指令与协议参考
 
-**设备指令**列出原项目已知的 Win207 加密和裸通道指令，标出用途与所在功能页。支持读取固件版本、电压、方向、温度、转速、存储和视频缓冲应答，也可执行固件时钟、停止播放及切换桌面模式等操作。存储写入、散热设置和工厂指令在总览中供查阅。
+**设备指令**显示 Win207 指令预设、参数和设备回包。收发面板支持十进制和十六进制参数，适用指令可直接填设备路径或选择本地文件。指令能否发送取决于设备型号。**技术文档**中可查阅完整协议、搜索指令并复制调用示例。
 
-**设备指令**页的指令收发面板支持加密和裸通道请求。输入指令编号与十六进制参数后可读取原始回包。**技术文档**以排版后的 Markdown 显示，可查找并复制调用示例。
+支持桌面模式的屏幕可先发 `150` 设置 Windows 桌面模式，再单独发 `11` 重启。要恢复 Studio 送屏，在 **设备指令** 列表选中 **切回副屏模式**。在右侧刷新桌面模式设备列表，按序列号选中屏幕后点击 **切回副屏模式**。完整步骤和型号限制见 [Win207 设备指令技术说明](docs/win207-protocol.md)。
 
 ## .NET 接入
 
@@ -124,7 +124,7 @@ dotnet run --project src/TURZX.WinUsbDisplay.Studio
 
 - `src/TURZX.WinUsbDisplay` 提供设备枚举、WinUSB 通信和 Win207 设备控制 SDK。
 - `src/TURZX.WinUsbDisplay.Media` 提供可选的 HTML 捕捉、视频转码和无头帧输入。
-- `src/TURZX.WinUsbDisplay.Windows` 供 Studio 和 Probe 共用 WPF 图像处理、窗口捕捉和 Windows 密钥存储。SDK 发布包包含设备库和 Media 库。
+- `src/TURZX.WinUsbDisplay.Windows` 提供 WPF 图像处理、窗口捕捉和 Windows 密钥存储。SDK 发布包包含设备库和 Media 库。
 - `src/TURZX.WinUsbDisplay.Cli` 提供命令行入口。
 - `src/TURZX.WinUsbDisplay.Studio` 提供 WPF 桌面界面。
 - `examples/SdkDiscover` 演示设备枚举，在仓库中引用源码项目，在 SDK 包中引用 DLL。
@@ -132,14 +132,3 @@ dotnet run --project src/TURZX.WinUsbDisplay.Studio
 - `docs` 记录协议，便于其他语言实现。
 
 本项目及其 Win207 实现采用 [MIT 许可证](LICENSE)。
-
-## 图片发送探针
-
-默认只查询固件。添加 `--send` 后，会在指定 PID 的屏幕显示测试图，或发送给定图片。探针输出每条请求的回包长度、首字节和耗时。设备操作优先使用当前终端的 `WINUSB_DISPLAY_COMMAND_KEY`，未设置时读取 Studio 保存的参数。
-
-`--capture` 只测网页捕获和编码，可断开 USB 屏运行。PID 用来选择支持型号的目标尺寸。`WINUSB_DISPLAY_PROBE_ROTATION` 只应用于主机处理。如果要目视验证主机旋转后的输出，请先在设备端设为 0°，Probe 运行期间不会修改设备方向。
-
-```powershell
-dotnet run --project tools/TURZX.WinUsbDisplay.Probe -- 0046
-dotnet run --project tools/TURZX.WinUsbDisplay.Probe -- 0046 .\artwork.png --send
-```

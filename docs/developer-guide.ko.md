@@ -82,15 +82,17 @@ finally
 | `ReadDeviceDirectory(directory, cancellation)` | 파일 이름과 `IsComplete`를 반환합니다. 응답이 불완전해도 일부 항목이 반환될 수 있습니다. 디렉터리 생성에 실패하면 `Failure`가 `DirectoryCreationFailed`인 `DeviceResponseException`을 던집니다 |
 | `PlayDeviceFile(path)` / `DeleteDeviceFile(path)` | 장치에 저장된 파일을 재생하거나 삭제합니다. `/`로 시작하는 최대 484바이트의 ASCII 경로를 사용하세요. 삭제 응답에는 공통 성공 코드가 없으므로 목록을 다시 조회해 삭제를 확인하세요 |
 | `ReadStorageCapacity()` | SD 카드와 내부 플래시의 용량을 KiB 단위로 반환합니다 |
-| `ReadSupplyVoltageMillivolts()` | 호환 장치의 공급 전압을 읽습니다. 기존 프로젝트는 지정된 12.3인치 모델에서 mV 단위로 표시합니다 |
+| `ReadSupplyVoltageMillivolts()` | 호환되는 장치의 전원 전압을 밀리볼트 단위로 읽습니다 |
 | `StopPlayback()` | 호스트 스트리밍, 장치 내 H.264 재생 및 JPEG 반복 재생을 중지합니다. 먼저 진행 중인 전송을 취소하고 종료를 기다리세요 |
 | `StopVideo()` | 스트리밍 동영상 중지 명령을 보냅니다. 연속 전송이 진행 중이면 먼저 해당 작업을 취소하고 종료를 기다리세요 |
 | `StopLocalVideo()`, `StopImageLoop()` | 장치에 저장된 동영상 또는 이미지의 반복 재생을 중지합니다 |
 | `ShowDefaultClock(enabled)` | 호스트의 현지 시간으로 장치 시계를 맞춰 표시하거나 시계 표시를 중지합니다 |
-| `SwitchToDesktop()` | 호환 펌웨어를 장치 데스크톱 모드로 전환합니다 |
+| `SwitchToDesktop()` | 다음 부팅에 Windows 데스크톱 모드를 설정합니다. 적용하려면 호출 측에서 별도로 다시 시작(11)합니다 |
 | `ExchangeCommand(command, arguments, payload)` | 암호화 채널에서 범용 송수신을 수행합니다. 매개 변수는 평문 헤더 오프셋 8부터 최대 492바이트이며 페이로드는 USB 오프셋 512부터 시작합니다. 호출자가 프로토콜에 맞게 길이와 플래그를 채웁니다. 실제 응답 바이트를 반환합니다 |
 | `ExchangeRawCommand(command, arguments)` | 원시 채널에서 범용 송수신을 수행합니다. 명령 번호는 오프셋 0에 있으며 매개 변수는 오프셋 1부터 최대 63바이트입니다. 실제 응답 바이트를 반환합니다 |
 | `ReadDiagnostic(command, raw)` | 원시 응답을 반환합니다. 암호화 채널은 10, 17, 50, 60, 100, 112, 122, 201을 지원하고 원시 채널은 0x60, 0x62를 지원합니다 |
+
+`DesktopModeDevice.Discover()`로 데스크톱 모드 장치를 열거합니다. `Serial`로 선택하고 `SwitchToMonitorAsync()`로 HID 보고서를 한 번 보낸 다음 `DisplayDevice.Discover(DisplaySettings.InterfaceGuid)`로 동일한 일련번호의 WinUSB 인터페이스가 나타났는지 확인합니다. Studio에서 조작하는 방법은 프로토콜 참조의 ‘Windows 데스크톱 모드와 USB 보조 화면 모드’를 참고하세요.
 
 장치 라이브러리는 인코딩된 이미지나 동영상을 직접 받습니다. MP4 같은 컨테이너는 먼저 Annex B H.264로 변환하고 HTML과 Windows 창은 PNG 또는 JPEG로 렌더링해야 합니다. 바이트를 직접 생성하거나 `TURZX.WinUsbDisplay.Media`의 `VideoConverter`, `HtmlCapture`, `LiveScene`, `FrameInput`을 참고하세요.
 

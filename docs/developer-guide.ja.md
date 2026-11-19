@@ -82,15 +82,17 @@ finally
 | `ReadDeviceDirectory(directory, cancellation)` | ファイル名と `IsComplete` を返します。応答が不完全でも一部の項目が返る場合があります。フォルダーの作成に失敗すると、`Failure` が `DirectoryCreationFailed` の `DeviceResponseException` をスローします |
 | `PlayDeviceFile(path)` / `DeleteDeviceFile(path)` | デバイス内のファイルを再生または削除します。パスは `/` から始まる ASCII で、最大 484 バイトです。削除応答には共通の成功コードがないため、一覧を再取得して削除を確認してください |
 | `ReadStorageCapacity()` | SD カードと内部フラッシュの容量を KiB 単位で返します |
-| `ReadSupplyVoltageMillivolts()` | 対応デバイスの電源電圧を読み取ります。元のプロジェクトでは指定の 12.3 インチモデルで mV 単位の値を表示します |
+| `ReadSupplyVoltageMillivolts()` | 対応する機器の電源電圧をミリボルト単位で取得します |
 | `StopPlayback()` | ホストのストリーミング、デバイス内の H.264 再生、JPEG ループを停止します。先に実行中の転送をキャンセルし、終了を待ってください |
 | `StopVideo()` | ストリーミング動画の停止コマンドを送信します。連続送信中は、先にそのタスクをキャンセルして終了を待ってください |
 | `StopLocalVideo()`, `StopImageLoop()` | デバイスに保存された動画または画像のループ再生を停止します |
 | `ShowDefaultClock(enabled)` | ホストのローカル時刻でデバイスの時計を合わせて表示するか、時計表示を停止します |
-| `SwitchToDesktop()` | 対応ファームウェアをデバイスのデスクトップモードに切り替えます |
+| `SwitchToDesktop()` | 次回起動時の Windows デスクトップモードを設定します。適用するには呼び出し側で別途再起動（11）します |
 | `ExchangeCommand(command, arguments, payload)` | 暗号化チャネルで汎用の送受信を行います。引数は平文ヘッダーのオフセット 8 から最大 492 バイト、ペイロードは USB のオフセット 512 からです。長さとフラグは呼び出し側でプロトコルに従って設定します。実際の応答バイトを返します |
 | `ExchangeRawCommand(command, arguments)` | RAW チャネルで汎用の送受信を行います。コマンド番号はオフセット 0、引数はオフセット 1 から最大 63 バイトです。実際の応答バイトを返します |
 | `ReadDiagnostic(command, raw)` | 生の応答を返します。暗号化チャネルは 10、17、50、60、100、112、122、201、RAW チャネルは 0x60、0x62 に対応します |
+
+デスクトップモードの機器は `DesktopModeDevice.Discover()` で列挙します。`Serial` で選び、`SwitchToMonitorAsync()` で HID レポートを 1 回送信した後、`DisplayDevice.Discover(DisplaySettings.InterfaceGuid)` で同じシリアル番号の WinUSB インターフェイスを確認します。Studio での手順はプロトコルリファレンスの「Windows デスクトップモードと USB 副画面モード」を参照してください。
 
 デバイスライブラリはエンコード済みの画像や動画を直接受け取ります。MP4 などのコンテナーは先に Annex B H.264 に変換し、HTML や Windows のウィンドウは PNG または JPEG にレンダリングします。バイト列を自前で用意するか、`TURZX.WinUsbDisplay.Media` の `VideoConverter`、`HtmlCapture`、`LiveScene`、`FrameInput` を参照してください。
 

@@ -71,8 +71,8 @@ public partial class MainWindow : Window
         languageReady = true;
         loadingQuickControls = false;
         quickControlTimer.Tick += async (_, _) => await SendPendingSettingsAsync();
-        CommandList.ItemsSource = DeviceCommands.All;
-        CommandList.SelectedIndex = 0;
+        CommandList.ItemsSource = CommandEntries;
+        CommandList.SelectedItem = DeviceCommands.All.First();
         LiveSource.SelectedIndex = MediaSourceMode;
         LayoutMode.SelectedIndex = 0;
         MediaNav.IsChecked = true;
@@ -383,14 +383,15 @@ public partial class MainWindow : Window
             UpdateQuickControlPrompts(model);
 
         var command = CommandList.SelectedItem;
-        CommandList.ItemsSource = null;
-        CommandList.ItemsSource = DeviceCommands.All;
-        CommandList.SelectedItem = command;
-        if ((lastPacketReply is not null || lastPacketError is not null)
-            && TryParsePacketId(PacketId.Text, out byte requestedCode))
-            DescribePacketRequest(requestedCode, PacketChannel.SelectedIndex == 1);
-        else if (command is null)
-            CommandResult.Text = T("SelectCommandHint");
+        synchronizingCommand = true;
+        try
+        {
+            CommandList.ItemsSource = CommandEntries;
+            CommandList.SelectedItem = command;
+        }
+        finally { synchronizingCommand = false; }
+        if (!IsDesktopRecoverySelected)
+            UpdateCommandDescription();
         UpdateCommandControls();
 
         try
@@ -733,6 +734,8 @@ public partial class MainWindow : Window
 
         if (DocsNav.IsChecked == true && renderedMarkdown.Length == 0)
             ShowSelectedDocumentation();
+        if (IsLoaded && CommandsNav.IsChecked == true && IsDesktopRecoverySelected)
+            _ = RefreshDesktopDevicesAsync();
     }
 
     /// <summary>亮度滑块变化时保存并安排发送最新值。</summary>

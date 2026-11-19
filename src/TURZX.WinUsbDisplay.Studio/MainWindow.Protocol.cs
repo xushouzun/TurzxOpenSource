@@ -14,7 +14,7 @@ public partial class MainWindow
     /// <summary>当前渲染在文档面板中的 Markdown 源文本。</summary>
     private string renderedMarkdown = "";
     /// <summary>最近选中的协议请求预设。</summary>
-    private DeviceCommand? lastPacketPreset;
+    private bool synchronizingCommand;
     /// <summary>协议工具当前对应的设备接口路径。</summary>
     private string? packetDevicePath;
     /// <summary>用于重新渲染协议工具状态的最近一次错误。</summary>
@@ -121,17 +121,17 @@ public partial class MainWindow
     /// <summary>将设备命令预设填入协议请求编辑器。</summary>
     private void LoadPacketPreset(DeviceCommand command)
     {
-        if (command == lastPacketPreset)
-            return;
-
-        lastPacketPreset = command;
-        ResetPacketFile();
         lastPacketError = null;
         lastPacketReply = null;
-        PacketId.Text = command.Raw ? $"0x{command.Code:X2}" : command.Code.ToString();
-        PacketChannel.SelectedIndex = command.Raw ? 1 : 0;
-        PacketArguments.Clear();
-        PacketPayload.Clear();
+        synchronizingCommand = true;
+        try
+        {
+            PacketId.Text = command.Raw ? $"0x{command.Code:X2}" : command.Code.ToString();
+            PacketChannel.SelectedIndex = command.Raw ? 1 : 0;
+        }
+        finally { synchronizingCommand = false; }
+        ResetPacketInputFields();
+        UpdatePacketFields();
         SetPacketReplyStatus("WaitingForARequest");
     }
 
@@ -149,6 +149,9 @@ public partial class MainWindow
     /// <summary>协议请求内容变化时同步字段和响应状态。</summary>
     private void OnPacketRequestChanged(object sender, RoutedEventArgs e)
     {
+        if (synchronizingCommand)
+            return;
+
         if (lastPacketReply is not null || lastPacketError is not null)
         {
             lastPacketReply = null;
@@ -158,9 +161,53 @@ public partial class MainWindow
 
         if (ReferenceEquals(sender, PacketId) || ReferenceEquals(sender, PacketChannel))
         {
-            ResetPacketFile();
+            if (PacketArgumentsHint is null) return;
+            UpdateCommandSelectionFromRequest();
+            ResetPacketInputFields();
             UpdatePacketFields();
         }
+    }
+
+    private void UpdateCommandSelectionFromRequest()
+    {
+        bool raw = PacketChannel.SelectedIndex == 1;
+        var command = TryParsePacketId(PacketId.Text, out byte id) ? FindPacketCommand(id, raw) : null;
+        synchronizingCommand = true;
+        try { CommandList.SelectedItem = command; }
+        finally { synchronizingCommand = false; }
+        if (command is not null)
+            CommandList.ScrollIntoView(command);
+        UpdateCommandDescription();
+    }
+
+    private static DeviceCommand? FindPacketCommand(byte command, bool raw) =>
+        DeviceCommands.All.FirstOrDefault(item => item.Code == command && item.Raw == raw);
+
+    private void UpdateCommandDescription()
+    {
+        CommandResult.Text = TryParsePacketId(PacketId.Text, out byte id)
+            ? FindPacketCommand(id, PacketChannel.SelectedIndex == 1) is { } command
+                ? DescribeCommand(command) : T("NoDescriptionIsAvailableForThisCommand")
+            : T("SelectCommandHint");
+    }
+
+    private void OnPacketConsoleSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Limit long requests while reserving room for the send button and response tabs.
+        if (PacketRequestScroll is not null && e.HeightChanged && e.NewSize.Height > 0)
+            PacketRequestScroll.MaxHeight = Math.Max(48, e.NewSize.Height - 210);
+    }
+
+    private void ResetPacketInputFields()
+    {
+        ResetPacketFile();
+        PacketArguments.Clear();
+        PacketPayload.Clear();
+        bool pathCommand = TryParsePacketId(PacketId.Text, out byte command)
+            && PacketInput.HasPath(command, PacketChannel.SelectedIndex == 1);
+        PacketArgumentsMode.SelectedIndex = pathCommand ? 2 : 1;
+        PacketPayloadMode.SelectedIndex = 1;
+        PacketRequestScroll.ScrollToTop();
     }
 
     /// <summary>根据所选通道及命令启用适用的请求字段。</summary>
@@ -175,10 +222,32 @@ public partial class MainWindow
             : "HexArgumentsHint");
         PacketPayloadPlaceholder.Text = T(validCommand ? DeviceCommands.GetPayloadPlaceholderKey(command, raw)
             : "HexPayloadHint");
+        int mode = PacketArgumentsMode.SelectedIndex;
+        PacketPathMode.Visibility = validCommand && PacketInput.HasPath(command, raw) ? Visibility.Visible : Visibility.Collapsed;
+        if (mode == 2 && (!validCommand || !PacketInput.HasPath(command, raw)))
+            PacketArgumentsMode.SelectedIndex = mode = 1;
+        if (mode != 0)
+            PacketArgumentsPlaceholder.Text = T(PacketInput.Hint(command, raw, mode));
+        if (PacketPayloadMode.SelectedIndex == 1)
+            PacketPayloadPlaceholder.Text = T("PacketDecimalBytesHint");
         PacketArgumentsRow.Visibility = arguments ? Visibility.Visible : Visibility.Collapsed;
         PacketPayloadRow.Visibility = payload ? Visibility.Visible : Visibility.Collapsed;
         PacketArgumentsHint.Visibility = arguments ? Visibility.Visible : Visibility.Collapsed;
+        PacketArgumentsHint.Text = T("PacketEncodingHint");
         UpdatePacketFileFields(validCommand && !raw ? command : null);
+        PacketPayloadMode.Visibility = packetFilePath is null ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCommandControls();
+    }
+
+    private void OnPacketInputModeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PacketPathMode is null || PacketPayloadMode is null || PacketArgumentsPlaceholder is null || PacketPayload is null)
+            return;
+        // 已输入的数据不按另一种进制重新解释；切换后清空，避免静默发送不同的值。
+        if (ReferenceEquals(sender, PacketArgumentsMode)) PacketArguments.Clear();
+        if (ReferenceEquals(sender, PacketPayloadMode)) PacketPayload.Clear();
+        OnPacketRequestChanged(sender, e);
+        UpdatePacketFields();
     }
 
     /// <summary>解析协议编辑器输入并校验请求长度。</summary>
@@ -193,6 +262,9 @@ public partial class MainWindow
             return false;
         }
 
+        if (SelectedDevice is { } target && !DeviceCommands.CanSend(target.Model.ProductId, command, raw))
+            return false;
+
         var fields = DeviceCommands.GetRequestFields(command, raw);
         try
         {
@@ -201,12 +273,21 @@ public partial class MainWindow
                 arguments = BuildPacketFileArguments(command);
                 return true;
             }
-            arguments = fields.Arguments ? ParseHex(PacketArguments.Text) : [];
-            payload = fields.Payload ? ParseHex(PacketPayload.Text) : [];
+            arguments = fields.Arguments ? PacketInput.Arguments(command, raw, PacketArguments.Text, PacketArgumentsMode.SelectedIndex) : [];
+            payload = fields.Payload ? PacketInput.Bytes(PacketPayload.Text, PacketPayloadMode.SelectedIndex == 1) : [];
+            PacketInput.Validate(command, raw, arguments, payload);
+            if (SelectedDevice?.Model.ProductId == 0x0123 && !raw && command == 14 && arguments[0] > 80)
+                throw new FormatException();
+            if (SelectedDevice?.Model.ProductId == 0x0123 && !raw && command == 13
+                && (arguments.Length != 1 || arguments[0] != 0))
+            {
+                Status.Text = T("Packet0123NativeOrientation");
+                return false;
+            }
         }
         catch (FormatException)
         {
-            Status.Text = T("IncompleteHexByte");
+            Status.Text = T("PacketInputInvalid");
             return false;
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -240,17 +321,14 @@ public partial class MainWindow
         lastPacketError = null;
         lastPacketReply = null;
         SetPacketReplyStatus("WaitingForTheDeviceResponse");
-        DescribePacketRequest(command, raw);
-        bool parameterless = filePath is null && arguments.Length == 0 && payload.Length == 0;
         byte[] response = [];
         CancellationToken cancellation = deviceControlShutdown.Token;
         await RunDeviceControlAsync(T("WaitingForTheDeviceResponse"), session =>
         {
             response = raw ? session.ExchangeRawCommand(command, arguments)
-                : parameterless && command is 10 or 50 or 100
-                    ? session.ReadVerifiedQueryResponse(command, cancellation)
-                    : session.ExchangeCommand(command, arguments, payload);
-            return T("DeviceResponded");
+                : command == 99 ? session.ExchangeCommand(command, arguments, payload)
+                : session.ExchangeMatchingCommand(command, arguments, payload, DeviceCommands.MinimumReplyBytes(command), cancellation);
+            return T(!raw && command == 150 && response[1] == 200 ? "DesktopModeRestartRequired" : "DeviceResponded");
         }, message =>
         {
             lastPacketReply = (command, raw, response);
@@ -264,15 +342,6 @@ public partial class MainWindow
         {
             payload = await ReadPacketFileAsync(command, filePath, arguments, token).ConfigureAwait(false);
         });
-    }
-
-    /// <summary>显示请求命令及其通道的可读描述。</summary>
-    private void DescribePacketRequest(byte command, bool raw)
-    {
-        var requestedCommand = DeviceCommands.All.FirstOrDefault(item => item.Code == command && item.Raw == raw);
-        CommandResult.Text = requestedCommand is not null
-            ? DescribeCommand(requestedCommand)
-            : T("NoDescriptionIsAvailableForThisCommand");
     }
 
     /// <summary>设置协议应答面板的状态提示。</summary>
@@ -320,6 +389,11 @@ public partial class MainWindow
             string validateImage = signature.Length == 0 ? "" :
                 $"if (!payload.AsSpan().StartsWith<byte>({HexArgument(signature)}))\n" +
                 "    throw new ArgumentException(\"The local file does not match the command format.\");\n";
+            string encodeLength = command == 39
+                ? "System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(arguments, 1024 * 1024);\n"
+                    + "System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(arguments.AsSpan(4), payload.Length);\n"
+                    + "arguments[8] = 1;\nArray.Resize(ref payload, 1024 * 1024);"
+                : $"System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(arguments.AsSpan({(command == 40 ? 4 : 0)}), payload.Length);";
             prepareFile = $$"""
                 using var file = System.IO.File.OpenRead(args[1]);
                 if (file.Length < 1 || file.Length > {{PacketFileLimit(command)}})
@@ -327,7 +401,7 @@ public partial class MainWindow
                 byte[] payload = new byte[(int)file.Length];
                 file.ReadExactly(payload);
                 {{validateImage}}byte[] arguments = {{HexArgument(arguments)}};
-                System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(arguments.AsSpan({{(command == 40 ? 4 : 0)}}), payload.Length);
+                {{encodeLength}}
 
                 """;
             request = $"session.ExchangeCommand({id}, arguments, payload)";
@@ -411,10 +485,6 @@ public partial class MainWindow
         CommandList.Focus();
     }
 
-    /// <summary>将十六进制输入转换为字节数组。</summary>
-    private static byte[] ParseHex(string text) =>
-        Convert.FromHexString(string.Concat(text.Where(character => !char.IsWhiteSpace(character))));
-
     /// <summary>将设备原始应答转换为可检查的文本。</summary>
     private static string FormatPacketResponse(byte[] data)
     {
@@ -434,51 +504,48 @@ public partial class MainWindow
     /// <summary>选中不同快捷命令时刷新其用途和可用性。</summary>
     private void OnCommandChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (synchronizingCommand)
+            return;
+
+        bool recovery = IsDesktopRecoverySelected;
+        PacketConsole.Visibility = CommandDetails.Visibility = recovery ? Visibility.Collapsed : Visibility.Visible;
+        DesktopRecoveryPanel.Visibility = recovery ? Visibility.Visible : Visibility.Collapsed;
         if (CommandList.SelectedItem is DeviceCommand selected)
             LoadPacketPreset(selected);
-
-        CommandResult.Text = CommandList.SelectedItem is DeviceCommand command
-            ? DescribeCommand(command)
-            : T("SelectCommandHint");
+        if (recovery)
+            _ = RefreshDesktopDevicesAsync();
+        else
+            UpdateCommandDescription();
         UpdateCommandControls();
     }
 
     /// <summary>生成当前语言下的设备命令说明。</summary>
-    private string DescribeCommand(DeviceCommand command)
-    {
-        string label = $"{command.Purpose} · {command.Route}"
-            + (command.Query || DeviceCommands.CanExecute(command) ? "" : T("UseThePacketConsole"));
-        try
-        {
-            string id = command.Raw ? $"0x{command.Code:X2}" : command.Code.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            string prefix = $"| {id} | {command.ProtocolName} | ";
-            string markdown = LoadDocumentation("win207-protocol");
-            string? row = markdown.Split('\n').FirstOrDefault(line => line.StartsWith(prefix, StringComparison.Ordinal));
-            if (row is not null)
-                return label + "\n" + row[prefix.Length..].Split('|', 2)[0].Trim().Replace("`", "");
-        }
-        catch (IOException)
-        {
-            return label + "\n" + T("DocumentationUnavailable");
-        }
-        return label;
-    }
+    private static string DescribeCommand(DeviceCommand command) => $"{command.Purpose}\n{command.Detail}";
 
     /// <summary>按所选设备和运行状态更新快捷命令控件。</summary>
     private void UpdateCommandControls()
     {
         var command = CommandList.SelectedItem as DeviceCommand;
         CommandList.IsEnabled = PacketInputs.IsEnabled = !busy;
-        SendPacket.IsEnabled = !busy && SelectedDevice is not null;
+        bool raw = PacketChannel.SelectedIndex == 1;
+        bool valid = TryParsePacketId(PacketId.Text, out byte id);
+        bool supported = SelectedDevice is not { } device || !valid
+            || DeviceCommands.CanSend(device.Model.ProductId, id, raw);
+        SendPacket.IsEnabled = !busy && valid && SelectedDevice is not null && supported;
+        ShowPacketExample.IsEnabled = !busy && valid && supported;
         bool presetAvailable = DeviceCommands.CanExecute(command);
         RunCommand.Visibility = presetAvailable ? Visibility.Visible : Visibility.Collapsed;
-        RunCommand.IsEnabled = !busy && SelectedDevice is not null && presetAvailable;
+        RunCommand.IsEnabled = !busy && SelectedDevice is { } target && presetAvailable && command is not null
+            && DeviceCommands.CanSend(target.Model.ProductId, (byte)command.Code, command.Raw);
+        UpdateDesktopModeControls();
     }
 
     /// <summary>执行当前选中的设备快捷命令。</summary>
     private async void OnRunCommand(object sender, RoutedEventArgs e)
     {
         if (CommandList.SelectedItem is not DeviceCommand command || !DeviceCommands.CanExecute(command))
+            return;
+        if (SelectedDevice is { } target && !DeviceCommands.CanSend(target.Model.ProductId, (byte)command.Code, command.Raw))
             return;
 
         await RunDeviceControlAsync(T("CommunicatingWithTheDevice"), session => DeviceCommands.Run(session, command), result =>

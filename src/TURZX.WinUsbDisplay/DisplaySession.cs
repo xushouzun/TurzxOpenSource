@@ -596,7 +596,7 @@ public sealed class DisplaySession : IDisposable
 
     /// <summary>停止播放设备中存储的 H.264 视频。</summary>
     public void StopLocalVideo() => Command(111);
-    /// <summary>将兼容固件切换到内置桌面模式。</summary>
+    /// <summary>为兼容设备设置 Windows 桌面模式，设备重启后生效。此方法只发送 150 号指令。</summary>
     public void SwitchToDesktop() => Command(150);
 
     /// <summary>传输 Annex B 格式的 H.264 视频流，并按设备队列状态控制发送。这是阻塞操作，应在工作线程运行。</summary>
@@ -1021,6 +1021,32 @@ public sealed class DisplaySession : IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(arguments.Length, 492, nameof(arguments));
         return Exchange(command, payload, arguments: arguments, writePayloadLength: false);
+    }
+
+    /// <summary>只发送一次指令，跳过积压的其他命令应答，不重新执行控制操作。</summary>
+    internal byte[] ExchangeMatchingCommand(byte command, byte[] arguments, byte[] payload,
+        int minimumLength, CancellationToken cancellation)
+    {
+        lock (gate)
+            return ReadMatchingReply(command, minimumLength, () => ExchangeCommand(command, arguments, payload),
+                () => transport.ReadResponse(), cancellation);
+    }
+
+    internal static byte[] ReadMatchingReply(byte command, int minimumLength, Func<byte[]> send,
+        Func<byte[]> readNext, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        byte[] reply = send();
+        for (int skipped = 0; ; skipped++)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (reply.Length >= minimumLength && reply.Length != 0 && reply[0] == command)
+                return reply;
+            if (skipped == 20)
+                throw new DeviceResponseException(DeviceResponseFailure.UnexpectedReply,
+                    $"No matching response for command {command}; skipped 20 stale packets.", response: reply);
+            reply = readNext();
+        }
     }
 
     /// <summary>发送一条未加密的 64 字节请求，返回从 IN 端点读到的原始字节。</summary>

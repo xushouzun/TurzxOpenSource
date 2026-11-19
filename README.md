@@ -6,7 +6,7 @@ Explore TURZX displays and more at the [official TURZX website](https://www.turz
 
 Turn a TURZX Win207 USB screen into a desktop dashboard. Crop a webpage or window, layer it over a video, or loop a set of photos. Preview the result in Studio before sending it to the display.
 
-**[Get the Windows preview](../../releases)** · **[Try the sample scenes](docs/scenes.md)** · **[Check hardware compatibility](docs/compatibility.md)** · **[Build with the .NET SDK](docs/developer-guide.en.md)**
+**[Download for Windows](../../releases)** · **[Try the sample scenes](docs/scenes.md)** · **[Check hardware compatibility](docs/compatibility.md)** · **[Build with the .NET SDK](docs/developer-guide.en.md)**
 
 | Digital clock | Neon star trails | Pixel fireworks |
 | :---: | :---: | :---: |
@@ -16,21 +16,21 @@ Looping GIF previews are rendered at the 2.1-inch round display’s 480 × 480 r
 
 ## Quick start
 
-1. Download the Windows x64 ZIP from Releases, extract it, and run `TURZX.WinUsbDisplay.Studio.exe`. The preview package includes the .NET runtime.
+1. Download the Windows x64 ZIP from Releases, extract it, and run `TURZX.WinUsbDisplay.Studio.exe`. The package includes the .NET runtime.
 2. In **Media**, choose **Render HTML live** as the foreground source and select **Digital clock**. HTML preview works without a USB display and requires Chrome or Edge.
 3. Physical output requires a matching WinUSB driver and a packet key from the firmware maintainer. Follow the [first-display guide](docs/first-display.md#english) to check the hardware ID and verify still-image output.
 
-## Hardware tested
+## Display compatibility
 
-| Display | USB VID:PID | Default output size | Test results |
-| --- | --- | --- | --- |
-| 4.6 inch | `1CBE:0046` | 320 × 960 | `turzx_0001_0020`, Firmware query and Studio settings restore |
-| 2.1-inch round | `1CBE:0021` | 480 × 480 | `turzx_0001_0023`, SDK enumeration, firmware query and device acknowledgements for 30 FPS H.264 blocks |
-| 12.3 inch | `1CBE:0123` | 720 × 1920 | Firmware query and device acknowledgements for H.264 blocks and slideshow frames |
-| 7 inch | `1CBE:0070` | 800 × 1280 | `turzx_0001_0017`, Studio still image, display switching and HTML over H.264 |
-| 5 inch | `1CBE:0055` | 720 × 1280 | `turzx_0001_0029`, device acknowledgements for CLI image transfer and stop, plus writing, listing and deleting a test image in internal storage |
+| Display | USB VID:PID | Default output size |
+| --- | --- | --- |
+| 4.6 inch | `1CBE:0046` | 320 × 960 |
+| 2.1-inch round | `1CBE:0021` | 480 × 480 |
+| 12.3 inch | `1CBE:0123` | 720 × 1920 |
+| 7 inch | `1CBE:0070` | 800 × 1280 |
+| 5 inch | `1CBE:0055` | 720 × 1280 |
 
-See the [compatibility records](docs/compatibility.md) for firmware, device acknowledgements and observed output. Older WCH, CDC and HID display protocols are out of scope.
+See the [compatibility records](docs/compatibility.md) for model-specific settings. Older WCH, CDC and HID display protocols are out of scope.
 
 ## Running
 
@@ -89,11 +89,11 @@ your-renderer.exe | dotnet run --project src/TURZX.WinUsbDisplay.Cli -- frames 0
 
 For example a Python generator can use `sys.stdout.buffer.write(struct.pack("<I", len(png)) + png)` and call `sys.stdout.buffer.flush()` after each frame.
 
-### Commands and send/receive debugging
+### Device commands and protocol reference
 
-**Commands** lists the Win207 encrypted and raw-channel commands known from the original project, with their purpose and owning feature page. It can read firmware version, voltage, orientation, temperatures, speeds, storage and video-buffer replies, and can run the firmware clock, stop playback and switch desktop mode. Storage writes, cooling settings and factory commands are listed for reference.
+**Device commands** shows Win207 presets, their parameters and the device reply. The console accepts decimal or hexadecimal input and supports direct typing of device paths and local file selection for applicable commands. Availability depends on the display model. **Documentation** includes the full protocol reference, a search field and copyable examples.
 
-The send/receive panel on the **Commands** page supports encrypted and raw-channel requests. Enter a command number and hexadecimal arguments to read the raw reply. **Docs** renders the Markdown with search and copyable call examples.
+On a supported display, send command `150` to set Windows desktop mode, then send `11` separately to restart. To resume Studio output, select **Return to USB display** in the **Device commands** list. In the right pane, refresh the desktop-mode device list, select the display by serial number and click **Return to USB display**. See the [Win207 protocol reference](docs/win207-protocol.en.md) for the full workflow and model restrictions.
 
 ## .NET integration
 
@@ -124,7 +124,7 @@ Sources and asset notices are in [NOTICE](NOTICE.md). See [CONTRIBUTING](CONTRIB
 
 - `src/TURZX.WinUsbDisplay` provides device enumeration, WinUSB transport and the Win207 device-control SDK.
 - `src/TURZX.WinUsbDisplay.Media` provides optional HTML capture, video transcoding and headless frame input.
-- `src/TURZX.WinUsbDisplay.Windows` shares WPF frame processing, window capture and Windows key storage between Studio and Probe. The SDK archive contains the device and Media libraries.
+- `src/TURZX.WinUsbDisplay.Windows` provides WPF frame processing, window capture and Windows key storage. The SDK archive contains the device and Media libraries.
 - `src/TURZX.WinUsbDisplay.Cli` provides the command-line entry point.
 - `src/TURZX.WinUsbDisplay.Studio` provides the WPF desktop UI.
 - `examples/SdkDiscover` demonstrates device enumeration and builds against source in the repository or against the DLL in the SDK archive.
@@ -132,14 +132,3 @@ Sources and asset notices are in [NOTICE](NOTICE.md). See [CONTRIBUTING](CONTRIB
 - `docs` records the protocol so other languages can implement it.
 
 The project, including its Win207 implementation, uses the [MIT license](LICENSE).
-
-## Image-send probe
-
-By default the probe queries firmware. With `--send` it shows a test pattern on the display with the given PID, or sends a given image. The probe prints each request's reply length, first byte and elapsed time. Device commands use `WINUSB_DISPLAY_COMMAND_KEY` when set, with Studio's saved key as the fallback.
-
-`--capture` measures HTML capture and encoding without a USB display. The PID selects the target dimensions. `WINUSB_DISPLAY_PROBE_ROTATION` applies to host-side frame processing. Set the device to 0° before visually checking host rotation on the panel. Probe leaves the device orientation unchanged.
-
-```powershell
-dotnet run --project tools/TURZX.WinUsbDisplay.Probe -- 0046
-dotnet run --project tools/TURZX.WinUsbDisplay.Probe -- 0046 .\artwork.png --send
-```

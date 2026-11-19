@@ -82,15 +82,17 @@ finally
 | `ReadDeviceDirectory(directory, cancellation)` | 返回文件名和 `IsComplete`。未读完的回包可能仍包含部分条目。设备创建目录失败时抛出 `DeviceResponseException`，其 `Failure` 为 `DirectoryCreationFailed` |
 | `PlayDeviceFile(path)` / `DeleteDeviceFile(path)` | 播放或删除设备存储中的文件。使用以 `/` 开头的 ASCII 路径，最长 484 字节。删除回包未定义统一成功码，需重新查询目录确认结果 |
 | `ReadStorageCapacity()` | 返回 SD 卡与内部 Flash 的容量计数，单位 KiB |
-| `ReadSupplyVoltageMillivolts()` | 读取兼容设备的供电电压，原项目在指定 12.3 寸型号按 mV 显示 |
+| `ReadSupplyVoltageMillivolts()` | 读取兼容设备的供电电压，单位为毫伏 |
 | `StopPlayback()` | 停止主机推流、设备内 H.264 和设备内 JPEG 循环。先取消并等待正在运行的传输 |
 | `StopVideo()` | 发送流式视频停止指令。已有持续发送时，先取消并等待该任务 |
 | `StopLocalVideo()`、`StopImageLoop()` | 停止设备存储中的视频或图片循环 |
 | `ShowDefaultClock(enabled)` | 从主机本地时间校时并显示时钟，或停止时钟 |
-| `SwitchToDesktop()` | 切换兼容固件的设备桌面模式 |
+| `SwitchToDesktop()` | 设置下次启动进入 Windows 桌面模式，调用方另行重启（11）后生效 |
 | `ExchangeCommand(command, arguments, payload)` | 通用加密收发。参数从明文头偏移 8 开始，最多 492 字节。载荷从 USB 偏移 512 开始，长度和标志由调用者按协议填写。返回实际应答字节 |
 | `ExchangeRawCommand(command, arguments)` | 通用裸通道收发。编号在偏移 0，参数从偏移 1 开始，最多 63 字节。返回实际应答字节 |
 | `ReadDiagnostic(command, raw)` | 返回原始应答。加密通道支持 10、17、50、60、100、112、122、201，裸通道支持 0x60、0x62 |
+
+桌面模式设备可通过 `DesktopModeDevice.Discover()` 枚举。按 `Serial` 选择设备后调用 `SwitchToMonitorAsync()` 发送一次 HID 回切报告，再用 `DisplayDevice.Discover(DisplaySettings.InterfaceGuid)` 核对同序列号的 WinUSB 接口是否重新出现。Studio 中的操作步骤见协议文档的「Windows 桌面模式与副屏模式」。
 
 设备库直接使用编码后的图片或视频。MP4 等容器需先转成 Annex B H.264，HTML 和 Windows 窗口需先渲染成 PNG 或 JPEG。可自行生成这些字节，也可参考 `TURZX.WinUsbDisplay.Media` 中的 `VideoConverter`、`HtmlCapture`、`LiveScene` 和 `FrameInput`。
 

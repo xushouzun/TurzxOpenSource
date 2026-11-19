@@ -82,15 +82,17 @@ Keep the current connection target in your application as `DisplayDevice.Path`; 
 | `ReadDeviceDirectory(directory, cancellation)` | returns file names and `IsComplete`. An incomplete response may include partial results. If the display fails to create the directory, the SDK throws `DeviceResponseException` with `Failure` set to `DirectoryCreationFailed` |
 | `PlayDeviceFile(path)` / `DeleteDeviceFile(path)` | plays or deletes a file on the display. Use an ASCII path starting with `/`, up to 484 bytes. Query the directory again to verify deletion because the reply has no uniform success code |
 | `ReadStorageCapacity()` | returns SD-card and internal-flash capacity counts in KiB |
-| `ReadSupplyVoltageMillivolts()` | reads the supply voltage on compatible devices; the original project shows mV on the specified 12.3 inch model |
+| `ReadSupplyVoltageMillivolts()` | Reads the supply voltage in millivolts on compatible displays |
 | `StopPlayback()` | stops host streaming, device-stored H.264 and the device JPEG loop. Cancel and await any running transfer first |
 | `StopVideo()` | sends the streamed-video stop command. If a continuous send is running, cancel and await that task first |
 | `StopLocalVideo()`, `StopImageLoop()` | stop video or image loops stored on the device |
 | `ShowDefaultClock(enabled)` | sets the clock from host local time and shows it, or stops the clock |
-| `SwitchToDesktop()` | switches compatible firmware to device desktop mode |
+| `SwitchToDesktop()` | sets Windows desktop mode for the next boot. The caller issues a separate restart (11) to apply it |
 | `ExchangeCommand(command, arguments, payload)` | generic encrypted send/receive. Arguments start at plaintext header offset 8, up to 492 bytes. Payload starts at USB offset 512; the caller fills length and flags per the protocol. Returns the actual reply bytes |
 | `ExchangeRawCommand(command, arguments)` | generic raw-channel send/receive. The number is at offset 0, arguments from offset 1, up to 63 bytes. Returns the actual reply bytes |
 | `ReadDiagnostic(command, raw)` | returns the raw reply. Encrypted channel supports 10, 17, 50, 60, 100, 112, 122, 201; raw channel supports 0x60, 0x62 |
+
+Use `DesktopModeDevice.Discover()` to enumerate devices in desktop mode. Select by `Serial`, call `SwitchToMonitorAsync()` to send one HID return report, then use `DisplayDevice.Discover(DisplaySettings.InterfaceGuid)` to verify that the WinUSB interface with the same serial number has returned. See “Windows desktop mode and USB display mode” in the protocol reference for the Studio workflow.
 
 The device library consumes encoded images or video directly. Containers such as MP4 must first be converted to Annex B H.264; HTML and Windows windows must first be rendered to PNG or JPEG. Produce these bytes yourself, or refer to `VideoConverter`, `HtmlCapture`, `LiveScene` and `FrameInput` in `TURZX.WinUsbDisplay.Media`.
 

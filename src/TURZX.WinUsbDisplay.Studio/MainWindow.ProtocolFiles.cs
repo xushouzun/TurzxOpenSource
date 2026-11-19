@@ -10,10 +10,10 @@ public partial class MainWindow
 {
     private string? packetFilePath;
 
-    private static bool SupportsPacketFile(byte command) => command is 40 or 101 or 102;
+    private static bool SupportsPacketFile(byte command) => command is 39 or 40 or 101 or 102;
 
     private static int PacketFileLimit(byte command) =>
-        command == 40 ? 100 * 1024 - 1 : DisplayFrameProcessor.MaxEncodedFrameBytes;
+        command == 39 ? 1024 * 1024 : command == 40 ? 100 * 1024 - 1 : DisplayFrameProcessor.MaxEncodedFrameBytes;
 
     private static ReadOnlySpan<byte> PacketImageSignature(byte command) => command switch
     {
@@ -37,8 +37,10 @@ public partial class MainWindow
         PacketFileRow.Visibility = attached ? Visibility.Visible : Visibility.Collapsed;
         PacketDevicePathRow.Visibility = attached && command == 40 ? Visibility.Visible : Visibility.Collapsed;
         PacketPayloadHexEditor.Visibility = attached ? Visibility.Collapsed : Visibility.Visible;
+        PacketFileInstructions.Visibility = attached && command is 39 or 40 ? Visibility.Visible : Visibility.Collapsed;
+        PacketFileInstructions.Text = T(command == 39 ? "PacketBlockFileHelp" : "PacketSmallFileHelp");
         PacketPayloadLabel.SetResourceReference(System.Windows.Controls.TextBlock.TextProperty,
-            ResourceKey(attached ? "PacketLocalFile" : "PayloadHexOptional"));
+            ResourceKey(attached ? "PacketLocalFile" : "PacketPayloadLabel"));
         if (attached)
         {
             PacketArgumentsRow.Visibility = Visibility.Collapsed;
@@ -88,14 +90,13 @@ public partial class MainWindow
         if (picker.ShowDialog(this) != true)
             return;
 
-        MediaNav.IsChecked = true;
         BackgroundPath.Text = picker.FileName;
         Status.Text = T("PacketVideoSelected");
     }
 
     private byte[] BuildPacketFileArguments(byte command)
     {
-        byte[] arguments = new byte[4];
+        byte[] arguments = new byte[command == 39 ? 9 : 4];
         if (command == 40)
         {
             string devicePath = PacketDevicePath.Text.Trim();
@@ -124,7 +125,7 @@ public partial class MainWindow
         long length = file.Length;
         if (length < 1 || length > PacketFileLimit(command))
             throw UiError(new InvalidDataException("The local file is empty or exceeds the packet size limit."),
-                command == 40 ? "PacketShortFileSize" : "PacketImageSize");
+                command == 39 ? "PacketBlockFileSize" : command == 40 ? "PacketShortFileSize" : "PacketImageSize");
         byte[] payload = new byte[(int)length];
         await file.ReadExactlyAsync(payload, cancellation).ConfigureAwait(false);
 
@@ -132,7 +133,15 @@ public partial class MainWindow
             throw UiError(new InvalidDataException("The selected file does not match the command format."),
                 command == 101 ? "PacketInvalidJpeg" : "PacketInvalidPng");
 
-        BinaryPrimitives.WriteInt32BigEndian(arguments.AsSpan(command == 40 ? 4 : 0), payload.Length);
+        if (command == 39)
+        {
+            BinaryPrimitives.WriteInt32BigEndian(arguments, 1024 * 1024);
+            BinaryPrimitives.WriteInt32BigEndian(arguments.AsSpan(4), payload.Length);
+            arguments[8] = 1;
+            Array.Resize(ref payload, 1024 * 1024);
+        }
+        else
+            BinaryPrimitives.WriteInt32BigEndian(arguments.AsSpan(command == 40 ? 4 : 0), payload.Length);
         return payload;
     }
 }

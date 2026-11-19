@@ -571,7 +571,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <StackPanel Grid.Row="2">
+                        <StackPanel x:Name="CommandDetails" Grid.Row="2">
                             <Border Height="1" Background="#354562" Margin="0,0,0,10" />
                             <TextBlock x:Name="CommandResult" TextWrapping="Wrap" Foreground="#DCE5F8"
                                        AutomationProperties.Name="{DynamicResource L.CommandDetailsAndResponse}" />
@@ -583,155 +583,189 @@
                 <Border Grid.Column="2" Background="#191F30" BorderBrush="#303B53" BorderThickness="1"
                         CornerRadius="14" Padding="16">
                     <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="{DynamicResource L.CodeExample}"
-                                    Click="OnShowPacketExample" Padding="9,5" Margin="8,0,0,0" />
-                            <TextBlock Text="{DynamicResource L.Win207PacketConsole}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </DockPanel>
-                        <StackPanel x:Name="PacketInputs" Grid.Row="1" Margin="0,12,0,8">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{DynamicResource L.CommandID}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <TextBox x:Name="PacketId" Width="90" TextChanged="OnPacketRequestChanged" ToolTip="{DynamicResource L.DecimalOr0xHexadecimal}" />
-                                <ComboBox x:Name="PacketChannel" MinWidth="158" SelectionChanged="OnPacketRequestChanged" Margin="12,0,0,0" SelectedIndex="0">
-                                    <ComboBoxItem Content="{DynamicResource L.EncryptedWin207}" />
-                                    <ComboBoxItem Content="{DynamicResource L.RawChannel}" />
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel x:Name="PacketArgumentsRow">
-                                <TextBlock Text="{DynamicResource L.HeaderArgumentsHex}" Margin="0,9,0,4" />
-                                <Grid>
-                                    <TextBox x:Name="PacketArguments" TextChanged="OnPacketRequestChanged" MaxLength="4096" TextWrapping="Wrap" AcceptsReturn="True"
-                                             MinHeight="40" MaxHeight="88" VerticalScrollBarVisibility="Auto"
-                                             ToolTip="{Binding Text, ElementName=PacketArgumentsPlaceholder}"
-                                             AutomationProperties.Name="{DynamicResource L.HeaderArgumentsHex}"
-                                             AutomationProperties.HelpText="{Binding Text, ElementName=PacketArgumentsPlaceholder}" />
-                                    <TextBlock x:Name="PacketArgumentsPlaceholder" Margin="9,6" IsHitTestVisible="False">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Text, ElementName=PacketArguments}" Value="">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Grid>
-                            </StackPanel>
-                            <StackPanel x:Name="PacketPayloadRow">
-                                <DockPanel Margin="0,9,0,4">
-                                    <Button x:Name="PacketChooseFile" DockPanel.Dock="Right" Content="{DynamicResource L.Browse}"
-                                            Visibility="Collapsed" Click="OnChoosePacketFile" Margin="8,0,0,0" Padding="8,3" />
-                                    <Button x:Name="PacketChooseVideo" DockPanel.Dock="Right" Content="{DynamicResource L.PacketChooseVideo}"
-                                            Visibility="Collapsed" Click="OnChoosePacketVideo" Margin="8,0,0,0" Padding="8,3" />
-                                    <TextBlock x:Name="PacketPayloadLabel" Text="{DynamicResource L.PayloadHexOptional}" VerticalAlignment="Center" />
-                                </DockPanel>
-                                <DockPanel x:Name="PacketFileRow" Visibility="Collapsed">
-                                    <Button DockPanel.Dock="Right" Content="{DynamicResource L.Clear}" Click="OnClearPacketFile"
-                                            Margin="8,0,0,0" Padding="8,3" />
-                                    <TextBlock x:Name="PacketFileName" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                </DockPanel>
-                                <StackPanel x:Name="PacketDevicePathRow" Visibility="Collapsed">
-                                    <TextBlock Text="{DynamicResource L.PacketDevicePath}" Margin="0,4,0,4" />
-                                    <TextBox x:Name="PacketDevicePath" MaxLength="484" TextChanged="OnPacketRequestChanged"
-                                             AutomationProperties.Name="{DynamicResource L.PacketDevicePath}" />
+                        <Grid x:Name="PacketConsole" SizeChanged="OnPacketConsoleSizeChanged">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <DockPanel>
+                                <Button x:Name="ShowPacketExample" DockPanel.Dock="Right" Content="{DynamicResource L.CodeExample}"
+                                        Click="OnShowPacketExample" Padding="9,5" Margin="8,0,0,0" />
+                                <TextBlock Text="{DynamicResource L.Win207PacketConsole}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <DockPanel x:Name="PacketInputs" Grid.Row="1" Margin="0,12,0,8">
+                                <Button x:Name="SendPacket" DockPanel.Dock="Bottom" HorizontalAlignment="Right" Content="{DynamicResource L.SendAndRead}"
+                                        Click="OnSendPacket" Background="#A8BFFF" Foreground="#102041" Padding="12,7" Margin="0,8,0,0"
+                                        KeyboardNavigation.TabIndex="1" />
+                                <ScrollViewer x:Name="PacketRequestScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                              KeyboardNavigation.TabIndex="0" MaxHeight="320">
+                                <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource L.CommandID}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBox x:Name="PacketId" Width="90" TextChanged="OnPacketRequestChanged" ToolTip="{DynamicResource L.DecimalOr0xHexadecimal}" />
+                                    <ComboBox x:Name="PacketChannel" MinWidth="158" SelectionChanged="OnPacketRequestChanged" Margin="12,0,0,0" SelectedIndex="0">
+                                        <ComboBoxItem Content="{DynamicResource L.EncryptedWin207}" />
+                                        <ComboBoxItem Content="{DynamicResource L.RawChannel}" />
+                                    </ComboBox>
                                 </StackPanel>
-                                <Grid x:Name="PacketPayloadHexEditor">
-                                    <TextBox x:Name="PacketPayload" TextChanged="OnPacketRequestChanged" MaxLength="65536" TextWrapping="Wrap" AcceptsReturn="True"
-                                             MinHeight="40" MaxHeight="88" VerticalScrollBarVisibility="Auto"
-                                             ToolTip="{Binding Text, ElementName=PacketPayloadPlaceholder}"
-                                             AutomationProperties.Name="{DynamicResource L.PayloadHexOptional}"
-                                             AutomationProperties.HelpText="{Binding Text, ElementName=PacketPayloadPlaceholder}" />
-                                    <TextBlock x:Name="PacketPayloadPlaceholder" Margin="9,6" IsHitTestVisible="False">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Text, ElementName=PacketPayload}" Value="">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Grid>
-                            </StackPanel>
-                            <TextBlock x:Name="PacketArgumentsHint" Text="{DynamicResource L.PacketArgumentsHelp}"
-                                       Style="{StaticResource Muted}" Margin="0,8,0,0" />
-                            <Button x:Name="SendPacket" HorizontalAlignment="Right" Content="{DynamicResource L.SendAndRead}"
-                                    Click="OnSendPacket" Background="#A8BFFF" Foreground="#102041" Padding="12,7" Margin="0,10,0,0" />
+                                <StackPanel x:Name="PacketArgumentsRow">
+                                    <DockPanel Margin="0,9,0,4">
+                                        <ComboBox x:Name="PacketArgumentsMode" DockPanel.Dock="Right" MinWidth="160" SelectionChanged="OnPacketInputModeChanged" SelectedIndex="0">
+                                            <ComboBoxItem Content="{DynamicResource L.PacketHexMode}" />
+                                            <ComboBoxItem Content="{DynamicResource L.PacketDecimalMode}" />
+                                            <ComboBoxItem x:Name="PacketPathMode" Content="{DynamicResource L.PacketPathMode}" />
+                                        </ComboBox>
+                                        <TextBlock Text="{DynamicResource L.PacketArgumentsLabel}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <Grid>
+                                        <TextBox x:Name="PacketArguments" TextChanged="OnPacketRequestChanged" MaxLength="4096" TextWrapping="Wrap" AcceptsReturn="True"
+                                                 MinHeight="40" MaxHeight="88" VerticalScrollBarVisibility="Auto"
+                                                 ToolTip="{Binding Text, ElementName=PacketArgumentsPlaceholder}"
+                                                 AutomationProperties.Name="{DynamicResource L.PacketArgumentsLabel}"
+                                                 AutomationProperties.HelpText="{Binding Text, ElementName=PacketArgumentsPlaceholder}" />
+                                        <TextBlock x:Name="PacketArgumentsPlaceholder" Margin="9,6" IsHitTestVisible="False">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Text, ElementName=PacketArguments}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel x:Name="PacketPayloadRow">
+                                    <DockPanel Margin="0,9,0,4">
+                                        <ComboBox x:Name="PacketPayloadMode" DockPanel.Dock="Right" MinWidth="160" SelectionChanged="OnPacketInputModeChanged" SelectedIndex="0">
+                                            <ComboBoxItem Content="{DynamicResource L.PacketHexMode}" />
+                                            <ComboBoxItem Content="{DynamicResource L.PacketDecimalBytesMode}" />
+                                        </ComboBox>
+                                        <Button x:Name="PacketChooseFile" DockPanel.Dock="Right" Content="{DynamicResource L.Browse}"
+                                                Visibility="Collapsed" Click="OnChoosePacketFile" Margin="8,0,0,0" Padding="8,3" />
+                                        <Button x:Name="PacketChooseVideo" DockPanel.Dock="Right" Content="{DynamicResource L.PacketChooseVideo}"
+                                                Visibility="Collapsed" Click="OnChoosePacketVideo" Margin="8,0,0,0" Padding="8,3" />
+                                        <TextBlock x:Name="PacketPayloadLabel" Text="{DynamicResource L.PayloadHexOptional}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <DockPanel x:Name="PacketFileRow" Visibility="Collapsed">
+                                        <Button DockPanel.Dock="Right" Content="{DynamicResource L.Clear}" Click="OnClearPacketFile"
+                                                Margin="8,0,0,0" Padding="8,3" />
+                                        <TextBlock x:Name="PacketFileName" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                    <TextBlock x:Name="PacketFileInstructions" Visibility="Collapsed" Style="{StaticResource Muted}" Margin="0,4,0,4" />
+                                    <StackPanel x:Name="PacketDevicePathRow" Visibility="Collapsed">
+                                        <TextBlock Text="{DynamicResource L.PacketDevicePath}" Margin="0,4,0,4" />
+                                        <TextBox x:Name="PacketDevicePath" MaxLength="484" TextChanged="OnPacketRequestChanged"
+                                                 AutomationProperties.Name="{DynamicResource L.PacketDevicePath}" />
+                                    </StackPanel>
+                                    <Grid x:Name="PacketPayloadHexEditor">
+                                        <TextBox x:Name="PacketPayload" TextChanged="OnPacketRequestChanged" MaxLength="65536" TextWrapping="Wrap" AcceptsReturn="True"
+                                                 MinHeight="40" MaxHeight="88" VerticalScrollBarVisibility="Auto"
+                                                 ToolTip="{Binding Text, ElementName=PacketPayloadPlaceholder}"
+                                                 AutomationProperties.Name="{DynamicResource L.PacketPayloadLabel}"
+                                                 AutomationProperties.HelpText="{Binding Text, ElementName=PacketPayloadPlaceholder}" />
+                                        <TextBlock x:Name="PacketPayloadPlaceholder" Margin="9,6" IsHitTestVisible="False">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Text, ElementName=PacketPayload}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </StackPanel>
+                                <TextBlock x:Name="PacketArgumentsHint" Text="{DynamicResource L.PacketArgumentsHelp}"
+                                           Style="{StaticResource Muted}" Margin="0,8,0,0" />
+                                </StackPanel>
+                                </ScrollViewer>
+                            </DockPanel>
+                            <DockPanel Grid.Row="2">
+                                <TextBlock DockPanel.Dock="Top" Text="{DynamicResource L.DeviceResponse}" FontWeight="SemiBold" Margin="0,0,0,5" />
+                                <TabControl x:Name="PacketResponseTabs">
+                                    <TabControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </TabControl.ItemsPanel>
+                                    <TabControl.Template>
+                                        <ControlTemplate TargetType="TabControl">
+                                            <DockPanel>
+                                                <ItemsPresenter DockPanel.Dock="Top" Margin="0,0,0,6"
+                                                                KeyboardNavigation.TabIndex="1"
+                                                                KeyboardNavigation.TabNavigation="Once"
+                                                                KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                                <Border Background="#192338" BorderBrush="#344563" BorderThickness="1"
+                                                        CornerRadius="8" Padding="3">
+                                                    <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
+                                                </Border>
+                                            </DockPanel>
+                                        </ControlTemplate>
+                                    </TabControl.Template>
+                                    <TabControl.Resources>
+                                        <Style TargetType="TabItem">
+                                            <Setter Property="Foreground" Value="#B8C6E0" />
+                                            <Setter Property="Padding" Value="10,5" />
+                                            <Setter Property="Margin" Value="0,0,5,0" />
+                                            <Setter Property="Cursor" Value="Hand" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="TabItem">
+                                                        <Border x:Name="Surface" CornerRadius="7" Padding="{TemplateBinding Padding}"
+                                                                Background="Transparent" BorderBrush="Transparent" BorderThickness="1">
+                                                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                                              TextElement.FontWeight="SemiBold" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Surface" Property="Background" Value="#202C43" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsSelected" Value="True">
+                                                                <Setter TargetName="Surface" Property="Background" Value="#293B63" />
+                                                                <Setter TargetName="Surface" Property="BorderBrush" Value="#455E8B" />
+                                                                <Setter Property="Foreground" Value="#F3F6FE" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                                <Setter TargetName="Surface" Property="BorderBrush" Value="#A8BFFF" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </TabControl.Resources>
+                                    <TabItem Header="{DynamicResource L.RawDeviceResponse}">
+                                        <TextBox x:Name="PacketResponse" Text="{DynamicResource L.WaitingForARequest}" IsReadOnly="True"
+                                                 Background="Transparent" BorderThickness="0" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
+                                                 HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" />
+                                    </TabItem>
+                                    <TabItem Header="{DynamicResource L.DecodedResult}">
+                                        <TextBox x:Name="PacketParsedResponse" Text="{DynamicResource L.WaitingForARequest}" IsReadOnly="True"
+                                                 Background="Transparent" BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                    </TabItem>
+                                </TabControl>
+                            </DockPanel>
+                        </Grid>
+                        <StackPanel x:Name="DesktopRecoveryPanel" Visibility="Collapsed">
+                            <TextBlock Text="{DynamicResource L.ReturnToMonitor}" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16" />
+                            <TextBlock Text="{DynamicResource L.DesktopModeDevice}" Margin="0,0,0,5" />
+                            <DockPanel>
+                                <Button x:Name="ReturnToMonitor" DockPanel.Dock="Right" Content="{DynamicResource L.ReturnToMonitor}"
+                                        Click="OnReturnToMonitor" IsEnabled="False" Padding="9,5" Margin="6,0,0,0" />
+                                <Button x:Name="RefreshDesktopDevices" DockPanel.Dock="Right" Content="{DynamicResource L.RefreshDesktopDevices}"
+                                        Click="OnRefreshDesktopDevices" Padding="9,5" Margin="6,0,0,0" />
+                                <ComboBox x:Name="DesktopModeDevices" DisplayMemberPath="Serial" MinWidth="120"
+                                          SelectionChanged="OnDesktopModeSelectionChanged"
+                                          AutomationProperties.Name="{DynamicResource L.DesktopModeDevice}" />
+                            </DockPanel>
+                            <TextBlock x:Name="DesktopModeStatus" Text="{DynamicResource L.DesktopModeNone}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,5,0,0" />
                         </StackPanel>
-                        <DockPanel Grid.Row="2">
-                            <TextBlock DockPanel.Dock="Top" Text="{DynamicResource L.DeviceResponse}" FontWeight="SemiBold" Margin="0,0,0,5" />
-                            <TabControl x:Name="PacketResponseTabs">
-                                <TabControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </TabControl.ItemsPanel>
-                                <TabControl.Template>
-                                    <ControlTemplate TargetType="TabControl">
-                                        <DockPanel>
-                                            <ItemsPresenter DockPanel.Dock="Top" Margin="0,0,0,6"
-                                                            KeyboardNavigation.TabIndex="1"
-                                                            KeyboardNavigation.TabNavigation="Once"
-                                                            KeyboardNavigation.DirectionalNavigation="Cycle" />
-                                            <Border Background="#192338" BorderBrush="#344563" BorderThickness="1"
-                                                    CornerRadius="8" Padding="3">
-                                                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
-                                            </Border>
-                                        </DockPanel>
-                                    </ControlTemplate>
-                                </TabControl.Template>
-                                <TabControl.Resources>
-                                    <Style TargetType="TabItem">
-                                        <Setter Property="Foreground" Value="#B8C6E0" />
-                                        <Setter Property="Padding" Value="10,5" />
-                                        <Setter Property="Margin" Value="0,0,5,0" />
-                                        <Setter Property="Cursor" Value="Hand" />
-                                        <Setter Property="Template">
-                                            <Setter.Value>
-                                                <ControlTemplate TargetType="TabItem">
-                                                    <Border x:Name="Surface" CornerRadius="7" Padding="{TemplateBinding Padding}"
-                                                            Background="Transparent" BorderBrush="Transparent" BorderThickness="1">
-                                                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
-                                                                          TextElement.FontWeight="SemiBold" />
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="Surface" Property="Background" Value="#202C43" />
-                                                        </Trigger>
-                                                        <Trigger Property="IsSelected" Value="True">
-                                                            <Setter TargetName="Surface" Property="Background" Value="#293B63" />
-                                                            <Setter TargetName="Surface" Property="BorderBrush" Value="#455E8B" />
-                                                            <Setter Property="Foreground" Value="#F3F6FE" />
-                                                        </Trigger>
-                                                        <Trigger Property="IsKeyboardFocused" Value="True">
-                                                            <Setter TargetName="Surface" Property="BorderBrush" Value="#A8BFFF" />
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </Setter.Value>
-                                        </Setter>
-                                    </Style>
-                                </TabControl.Resources>
-                                <TabItem Header="{DynamicResource L.RawDeviceResponse}">
-                                    <TextBox x:Name="PacketResponse" Text="{DynamicResource L.WaitingForARequest}" IsReadOnly="True"
-                                             Background="Transparent" BorderThickness="0" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
-                                             HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" />
-                                </TabItem>
-                                <TabItem Header="{DynamicResource L.DecodedResult}">
-                                    <TextBox x:Name="PacketParsedResponse" Text="{DynamicResource L.WaitingForARequest}" IsReadOnly="True"
-                                             Background="Transparent" BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
-                                </TabItem>
-                            </TabControl>
-                        </DockPanel>
                     </Grid>
                 </Border>
             </Grid>
