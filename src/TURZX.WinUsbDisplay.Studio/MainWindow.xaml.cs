@@ -536,7 +536,8 @@ public partial class MainWindow : Window
                 SetPlaybackStatus(active, T("SendingImage"));
                 await Task.Run(async () =>
                 {
-                    using var display = OpenPlaybackDevice(device, key, rotation, token);
+                    using var display = OpenPlaybackDevice(device, key, rotation, token,
+                        clearLegacyOverlay: !data.AsSpan().StartsWith(DisplaySession.JpegSignature));
                     token.ThrowIfCancellationRequested();
                     using var imagePlaybackTimer = new PlaybackTimer();
                     display.PlayImage(data, DefaultCaptureFps, token, () => Dispatcher.Invoke(() =>
@@ -886,7 +887,7 @@ public partial class MainWindow : Window
 
     /// <summary>打开设备并为指定方向的播放初始化会话。</summary>
     private static DisplaySession OpenPlaybackDevice(DisplayDevice device, byte[] key, byte rotation, CancellationToken token,
-        bool hasVideo = false)
+        bool hasVideo = false, bool clearLegacyOverlay = true)
     {
         var session = OpenOutputDevice(device, key, token);
         try
@@ -904,7 +905,7 @@ public partial class MainWindow : Window
             session.ShowDefaultClock(false);
             token.ThrowIfCancellationRequested();
             // 0123 的 PNG 清层只写入，不应等待不存在的应答。旧 PNG 图层会遮住后续 JPEG。
-            if (device.Model.ProductId == 0x0123)
+            if (clearLegacyOverlay && device.Model.ProductId == 0x0123)
                 session.ClearOverlayWithoutResponse(DisplayFrameProcessor.CreateBlankOverlay(device.Model), token);
             // Studio 发送普通 H.264 数据块，省略旧版同步启动时间戳。
             if (hasVideo && (device.Model.ProductId is 0x0046 or 0x0055))

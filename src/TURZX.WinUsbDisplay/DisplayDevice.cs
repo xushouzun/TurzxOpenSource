@@ -56,5 +56,5 @@ public sealed record DisplayDevice(string Path, DisplayModel Model)
     public static Guid WinUsbDeviceInterface { get; } = new("dee824ef-729b-4a0e-9c14-b7117d33a817");
 
     /// <summary>使用固件的八字节命令密钥打开独立会话。</summary>
-    public DisplaySession Open(ReadOnlySpan<byte> commandKey) => new(Path, commandKey, Model.ProductId == 0x0123 ? (byte)80 : (byte)100);
+    public DisplaySession Open(ReadOnlySpan<byte> commandKey) => new(Path, commandKey, Model.ProductId);
 }

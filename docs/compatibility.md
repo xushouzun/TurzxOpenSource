@@ -12,4 +12,8 @@
 
 Set orientation for the 12.3-inch display (`1CBE:0123`) on Studio's **Media** page. To resume Studio output from Windows desktop mode, select **Return to USB display** in the list on the **Device commands** page, then choose the target by serial number. See the [command reference](win207-protocol.en.md) for available commands and parameter ranges.
 
+在 12.3 寸屏上，SDK 的 `ShowImage` 和 CLI 的 `image` 会在显示 JPEG 前清除旧 PNG 覆盖层。
+
+On the 12.3-inch display, the SDK's `ShowImage` and the CLI's `image` clear any existing PNG overlay before showing a JPEG.
+
 可通过 Issues 的「设备兼容性」表单报告兼容性问题。 / Use the Device compatibility issue form to report compatibility issues.

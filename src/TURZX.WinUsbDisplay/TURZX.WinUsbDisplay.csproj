@@ -9,5 +9,6 @@
     <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Tests" />
     <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Media" />
     <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Studio" />
+    <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Windows" />
   </ItemGroup>
 </Project>

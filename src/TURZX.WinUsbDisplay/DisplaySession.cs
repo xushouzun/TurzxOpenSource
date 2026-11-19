@@ -28,13 +28,21 @@ public sealed class DisplaySession : IDisposable
     /// <summary>记录当前会话是否已释放。</summary>
     private bool disposed;
 
-    /// <summary>打开独占设备会话，并保存命令密钥和亮度上限。</summary>
-    internal DisplaySession(string path, ReadOnlySpan<byte> commandKey, byte brightnessLimit)
+    private readonly ushort productId;
+    private static readonly Lazy<byte[]> Native0123ClearOverlay = new(() =>
+    {
+        DisplayModel model = DisplayModel.Known.Single(model => model.ProductId == 0x0123);
+        return RgbaPng.CreateTransparent(model.Width, model.Height);
+    });
+
+    /// <summary>打开独占设备会话，并保存命令密钥和型号。</summary>
+    internal DisplaySession(string path, ReadOnlySpan<byte> commandKey, ushort productId)
     {
         if (commandKey.Length != 8)
             throw new ArgumentException("The firmware command key must be 8 bytes.", nameof(commandKey));
 
-        this.brightnessLimit = brightnessLimit;
+        this.productId = productId;
+        brightnessLimit = productId == 0x0123 ? (byte)80 : (byte)100;
         key = commandKey.ToArray();
         try
         {
@@ -77,17 +85,29 @@ public sealed class DisplaySession : IDisposable
     public void StopVideo() => Command(123);
 
     /// <summary>停止主机视频流和时钟图层，再显示不超过 <see cref="MaxEncodedFrameBytes"/> 字节的 8 位 RGBA PNG 或 JPEG。</summary>
-    public void ShowImage(ReadOnlySpan<byte> image)
-    {
-        byte command = GetImageCommand(image);
+    public void ShowImage(ReadOnlySpan<byte> image) =>
+        ShowImage(image, GetImageCommand(image), CancellationToken.None);
 
+    private void ShowImage(ReadOnlySpan<byte> image, byte command, CancellationToken cancellation)
+    {
         lock (videoGate)
         lock (gate)
         {
-            Command(123);
-            Command(52);
-            Exchange(command, image);
+            SendVerifiedImageCommand(123, [], cancellation);
+            SendVerifiedImageCommand(52, [], cancellation);
+            if (productId == 0x0123 && command == 101)
+                ClearOverlayWithoutResponse(Native0123ClearOverlay.Value, cancellation);
+            if (command == 101)
+                SendVerifiedImageCommand(command, image, cancellation);
+            else
+                Exchange(command, image);
         }
+    }
+
+    private void SendVerifiedImageCommand(byte command, ReadOnlySpan<byte> image, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        ReadMatchingReply(command, 2, Exchange(command, image), () => transport.ReadResponse(), cancellation);
     }
 
     /// <summary>显示静态图片并每秒刷新一次，直到取消。</summary>
@@ -109,7 +129,7 @@ public sealed class DisplaySession : IDisposable
         lock (videoGate)
         {
             cancellation.ThrowIfCancellationRequested();
-            ShowImage(image.Span);
+            ShowImage(image.Span, command, cancellation);
             byte[] packet = new byte[checked(HeaderSize + image.Length)];
             image.Span.CopyTo(packet.AsSpan(HeaderSize));
             var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -210,7 +230,16 @@ public sealed class DisplaySession : IDisposable
         return image.StartsWith(JpegSignature) ? (byte)101 : throw new InvalidDataException("Expected a PNG or JPEG image.");
     }
 
-    internal static void ValidateOverlay(ReadOnlySpan<byte> png)
+    /// <summary>验证送屏 PNG 的大小、8 位 RGBA 格式、块校验和及压缩像素数据。</summary>
+    /// <param name="png">完整的 PNG 数据。</param>
+    /// <exception cref="InvalidDataException">数据不符合送屏 PNG 要求。</exception>
+    public static void ValidateOverlay(ReadOnlySpan<byte> png)
+    {
+        ValidateOverlayStructure(png);
+        RgbaPng.ValidateImageData(png);
+    }
+
+    private static void ValidateOverlayStructure(ReadOnlySpan<byte> png)
     {
         ValidateFrameSize(png.Length);
         if (png.Length < 33 || !png.StartsWith(PngSignature) ||
@@ -255,10 +284,17 @@ public sealed class DisplaySession : IDisposable
         Exchange(102, png, discardReply: true);
     }
 
+    /// <summary>发送已由捕捉端编码或检查的 PNG，避免在发送线程重复解压逐帧数据。</summary>
+    internal void SendEncodedOverlay(ReadOnlySpan<byte> png)
+    {
+        ValidateOverlayStructure(png);
+        Exchange(102, png, discardReply: true);
+    }
+
     /// <summary>为不应答 PNG 的固件写入清层帧，并在同一个锁内留出处理时间。</summary>
     internal void ClearOverlayWithoutResponse(ReadOnlySpan<byte> png, CancellationToken cancellation)
     {
-        ValidateOverlay(png);
+        ValidateOverlayStructure(png);
         lock (gate)
         {
             cancellation.ThrowIfCancellationRequested();

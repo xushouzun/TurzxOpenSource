@@ -117,7 +117,7 @@ public partial class MainWindow
 
                 token.ThrowIfCancellationRequested();
                 long sent = Stopwatch.GetTimestamp();
-                session.ShowOverlay(frame);
+                session.SendEncodedOverlay(frame);
                 usbMs += Stopwatch.GetElapsedTime(sent).TotalMilliseconds;
                 frames++;
             } while (clock.Elapsed < TimeSpan.FromSeconds(10));

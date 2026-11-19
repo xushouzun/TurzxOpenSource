@@ -42,7 +42,7 @@ public static class LiveScene
 
     /// <summary>持续发送所选前景和背景，直到播放结束或被取消。</summary>
     /// <param name="session">接收前景和视频数据的设备会话。</param>
-    /// <param name="capture">生成已编码的前景帧。回调为空时省略前景，返回空帧时结束捕捉。</param>
+    /// <param name="capture">生成可直接送屏的已编码前景帧。回调为空时省略前景，返回空帧时结束捕捉。</param>
     /// <param name="background">可选的背景视频流。</param>
     /// <param name="backgroundFps">背景视频的播放帧率，范围为 1 至 60 FPS。</param>
     /// <param name="captureFps">前景捕捉帧率，范围为 1 至 60 FPS。</param>
@@ -213,7 +213,7 @@ public static class LiveScene
             if (background is null && frame.AsSpan().StartsWith(DisplaySession.JpegSignature))
                 session.ShowJpegFrame(frame, onJpegTransfer);
             else
-                session.ShowOverlay(frame);
+                session.SendEncodedOverlay(frame);
             onForegroundExchange?.Invoke(Stopwatch.GetElapsedTime(started));
             if (foregroundSent is not null)
                 await foregroundSent(frame).ConfigureAwait(false);

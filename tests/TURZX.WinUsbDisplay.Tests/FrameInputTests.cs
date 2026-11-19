@@ -7,8 +7,64 @@ namespace TURZX.WinUsbDisplay.Tests;
 /// <summary>验证带长度前缀的 PNG 输入流。</summary>
 public class FrameInputTests
 {
+    [Fact]
+    public void NativeClearOverlayHasTheRequiredGeometryAndTransparentPixels()
+    {
+        DisplayModel model = DisplayModel.Known.Single(model => model.ProductId == 0x0123);
+        byte[] png = TURZX.WinUsbDisplay.RgbaPng.CreateTransparent(model.Width, model.Height);
+        DisplaySession.ValidateOverlay(png);
+        Assert.Equal(model.Width, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16)));
+        Assert.Equal(model.Height, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20)));
+        int compressedLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(33));
+        using var compressed = new MemoryStream(png, 41, compressedLength);
+        using var decoder = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionMode.Decompress);
+        byte[] row = new byte[model.Width * 4 + 1];
+        for (int y = 0; y < model.Height; y++)
+        {
+            decoder.ReadExactly(row);
+            Assert.False(row.AsSpan().ContainsAnyExcept((byte)0));
+        }
+        Assert.Equal(-1, decoder.ReadByte());
+    }
+
     private static byte[] RgbaPng() => Convert.FromBase64String(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==");
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==");
+
+    [Fact]
+    public async Task DisplayFrameRejectsACorruptChunkChecksum()
+    {
+        byte[] png = RgbaPng();
+        png[57] ^= 1;
+        using var stream = Frame(png);
+        await Assert.ThrowsAsync<InvalidDataException>(() => FrameInput.ReadDisplayPngAsync(stream).AsTask());
+    }
+
+    [Fact]
+    public void ValidChunkChecksumDoesNotHideCorruptCompressedData()
+    {
+        byte[] compressed = RgbaPng().AsSpan(41, 13).ToArray();
+        compressed[0] = 0;
+        byte[] png = TURZX.WinUsbDisplay.RgbaPng.Encode(1, 1, compressed);
+        Assert.Throws<InvalidDataException>(() => DisplaySession.ValidateOverlay(png));
+    }
+
+    [Fact]
+    public void CompressedDataMustContainAllPixelsAndItsChecksum()
+    {
+        var compressed = RgbaPng().AsSpan(41, 13);
+        byte[] wrongDimensions = TURZX.WinUsbDisplay.RgbaPng.Encode(2, 1, compressed);
+        byte[] missingChecksum = TURZX.WinUsbDisplay.RgbaPng.Encode(1, 1, compressed[..^4]);
+        Assert.Throws<InvalidDataException>(() => DisplaySession.ValidateOverlay(wrongDimensions));
+        Assert.Throws<InvalidDataException>(() => DisplaySession.ValidateOverlay(missingChecksum));
+    }
+
+    [Fact]
+    public void InterlacedPngMaySplitCompressedDataAcrossChunks()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAAEFsT2yAAAAB0lEQVR4nGP4z8AAMDymtgAAAAxJREFURkCC4T8YAABLxwn3riWxEwAAAABJRU5ErkJggg==");
+        DisplaySession.ValidateOverlay(png);
+    }
 
     /// <summary>作为测试输入的示例帧字节。</summary>
     private static MemoryStream Frame(byte[] png)
