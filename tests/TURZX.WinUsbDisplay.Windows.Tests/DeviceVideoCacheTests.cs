@@ -126,4 +126,25 @@ public class DeviceVideoCacheTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             DeviceVideoCache.OpenAsync(CachePath(directory), null, cancellation.Token).WaitAsync(TimeSpan.FromSeconds(5)));
     }
+
+    [Fact]
+    public async Task EvictsOldPartialConversionsAfterTheirWriterReleasesTheFile()
+    {
+        using var directory = new TemporaryDirectory();
+        string abandoned = directory.File(Guid.NewGuid().ToString("N") + DeviceVideoCache.PartialVideoSuffix);
+        string recent = directory.File(Guid.NewGuid().ToString("N") + DeviceVideoCache.PartialVideoSuffix);
+        await File.WriteAllBytesAsync(abandoned, [1]);
+        await File.WriteAllBytesAsync(recent, [1]);
+        File.SetLastWriteTimeUtc(abandoned, DateTime.UtcNow.AddDays(-2));
+
+        using (File.Open(abandoned, FileMode.Open, FileAccess.Write, FileShare.None))
+        {
+            await DeviceVideoCache.OpenAsync(CachePath(directory), null, CancellationToken.None);
+            Assert.True(File.Exists(abandoned));
+        }
+
+        await DeviceVideoCache.OpenAsync(CachePath(directory), null, CancellationToken.None);
+        Assert.False(File.Exists(abandoned));
+        Assert.True(File.Exists(recent));
+    }
 }
