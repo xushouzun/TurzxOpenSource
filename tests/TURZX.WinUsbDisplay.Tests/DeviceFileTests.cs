@@ -199,6 +199,34 @@ public class DeviceFileTests
         Assert.Equal(DeviceResponseFailure.UnexpectedReply, error.Failure);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("result:dir:file:another.jpg/")]
+    [InlineData("result:dir:/different/file:another.jpg/")]
+    public void TwelveInchDirectoryCanUseTheFirmwareHeaderWithoutAnEchoedPath(string lastReply)
+    {
+        byte[] padding = new byte[512];
+        byte[] listing = Encoding.UTF8.GetBytes("result:dir:file:one.jpg/".PadRight(512, '\0'));
+        int requests = 0;
+        byte[] Request() => ++requests switch
+        {
+            19 => listing,
+            20 when lastReply.Length > 0 => Encoding.UTF8.GetBytes(lastReply),
+            _ => padding
+        };
+
+        var result = DisplaySession.CollectDirectoryReplies("/usr/data/img/", Request, CancellationToken.None,
+            allowPathlessReply: true);
+
+        Assert.Equal(20, requests);
+        Assert.False(result.IsComplete);
+        Assert.Equal(new[] { "one.jpg" },
+            DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+        requests = 0;
+        Assert.Throws<DeviceResponseException>(() =>
+            DisplaySession.CollectDirectoryReplies("/usr/data/img/", Request, CancellationToken.None));
+    }
+
     [Fact]
     public void UnrecognizedReplyCannotMasqueradeAsAnEmptyDirectory()
     {

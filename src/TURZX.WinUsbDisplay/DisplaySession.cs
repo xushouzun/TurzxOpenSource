@@ -419,7 +419,8 @@ public sealed class DisplaySession : IDisposable
         byte[] arguments = EncodeDevicePath(directory);
         (byte[] Response, bool IsComplete) replies;
         lock (gate)
-            replies = CollectDirectoryReplies(directory, () => ExchangeCommand(99, arguments), cancellation);
+            replies = CollectDirectoryReplies(directory, () => ExchangeCommand(99, arguments), cancellation,
+                allowPathlessReply: productId == 0x0123);
 
         cancellation.ThrowIfCancellationRequested();
         return (ParseDeviceFileList(Encoding.UTF8.GetString(replies.Response), replies.IsComplete), replies.IsComplete);
@@ -427,7 +428,7 @@ public sealed class DisplaySession : IDisposable
 
     /// <summary>收集目录的分段应答，并标明是否完整。</summary>
     internal static (byte[] Response, bool IsComplete) CollectDirectoryReplies(string directory, Func<byte[]> request,
-        CancellationToken cancellation)
+        CancellationToken cancellation, bool allowPathlessReply = false)
     {
         using var response = new MemoryStream();
         string text = "";
@@ -465,6 +466,9 @@ public sealed class DisplaySession : IDisposable
         cancellation.ThrowIfCancellationRequested();
         if (matchingStart >= 0)
             return (Encoding.UTF8.GetBytes(text[matchingStart..]), false);
+        // 部分 12.3 寸固件不回显目录；重复的空路径头无法证实同一目录已读完整。
+        if (allowPathlessReply && text.StartsWith("result:dir:file:", StringComparison.Ordinal))
+            return (Encoding.UTF8.GetBytes(text), false);
         if (text.Length == 0)
             return (response.ToArray(), false);
 
@@ -573,6 +577,8 @@ public sealed class DisplaySession : IDisposable
         {
             StopPlayback();
             ShowDefaultClock(false);
+            if (productId == 0x0123)
+                ClearOverlayWithoutResponse(Native0123ClearOverlay.Value, CancellationToken.None);
             byte[] reply = ExchangeMatchingCommand(command, arguments, [], command == 110 ? 9 : 2, CancellationToken.None);
             if (!IsDeviceFilePlaybackAccepted(command, reply, () =>
                     ExchangeMatchingCommand(112, [], [], 9, CancellationToken.None)))
