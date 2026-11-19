@@ -52,7 +52,13 @@ public partial class MainWindow
         {
             string name = DocumentationChoice.SelectedIndex == 1 ? "developer-guide" : "win207-protocol";
             renderedMarkdown = LoadDocumentation(name);
-            ProtocolText.Document = MarkdownPreview.Render(renderedMarkdown, OpenDocumentationLink);
+            ProtocolText.Document = MarkdownPreview.Render(renderedMarkdown, destination => OpenDocumentationLink(destination, uri =>
+            {
+                using var browser = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri)
+                {
+                    UseShellExecute = true
+                });
+            }));
             ProtocolText.Selection.Select(ProtocolText.Document.ContentStart, ProtocolText.Document.ContentStart);
         }
         catch (IOException ex)
@@ -62,14 +68,20 @@ public partial class MainWindow
     }
 
     /// <summary>打开文档中的受支持链接。</summary>
-    private void OpenDocumentationLink(string destination)
+    internal void OpenDocumentationLink(string destination, Action<Uri> openExternalLink)
     {
         if (destination == DocumentationFileName("developer-guide"))
             DocumentationChoice.SelectedIndex = 1;
         else if (destination == DocumentationFileName("win207-protocol"))
             DocumentationChoice.SelectedIndex = 0;
         else if (Uri.TryCreate(destination, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http")
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        {
+            try { openExternalLink(uri); }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                Status.Text = T("CouldNotOpenDocumentationLink");
+            }
+        }
     }
 
     /// <summary>在协议搜索框中按键时处理查找操作。</summary>
@@ -276,12 +288,10 @@ public partial class MainWindow
             arguments = fields.Arguments ? PacketInput.Arguments(command, raw, PacketArguments.Text, PacketArgumentsMode.SelectedIndex) : [];
             payload = fields.Payload ? PacketInput.Bytes(PacketPayload.Text, PacketPayloadMode.SelectedIndex == 1) : [];
             PacketInput.Validate(command, raw, arguments, payload);
-            if (SelectedDevice?.Model.ProductId == 0x0123 && !raw && command == 14 && arguments[0] > 80)
-                throw new FormatException();
-            if (SelectedDevice?.Model.ProductId == 0x0123 && !raw && command == 13
-                && (arguments.Length != 1 || arguments[0] != 0))
+            if (SelectedDevice is { } selected
+                && !DeviceCommands.AcceptsPacketValues(selected.Model.ProductId, command, raw, arguments))
             {
-                Status.Text = T("Packet0123NativeOrientation");
+                Status.Text = T(command == 13 ? "Packet0123NativeOrientation" : "PacketInputInvalid");
                 return false;
             }
         }
@@ -313,9 +323,17 @@ public partial class MainWindow
     /// <summary>向所选设备发送协议请求并保存应答。</summary>
     private async void OnSendPacket(object sender, RoutedEventArgs e)
     {
-        if (busy || SelectedDevice is null
+        if (busy || SelectedDevice is not { } device
             || !TryReadPacketRequest(out byte command, out bool raw, out byte[] arguments, out byte[] payload))
             return;
+
+        if (!raw && command == 42)
+        {
+            string path = System.Text.Encoding.ASCII.GetString(arguments.AsSpan(8));
+            if (!await ConfirmAsync(T("DeleteSelected"), T("ConfirmDeleteDevicePath", device.Model.Name, path))
+                || busy || SelectedDevice?.Path != device.Path)
+                return;
+        }
 
         string? filePath = !raw && SupportsPacketFile(command) ? packetFilePath : null;
         lastPacketError = null;
@@ -379,16 +397,38 @@ public partial class MainWindow
         if (!TryReadPacketRequest(out byte command, out bool raw, out byte[] arguments, out byte[] payload))
             return;
 
-        string id = raw ? $"0x{command:X2}" : command.ToString(System.Globalization.CultureInfo.InvariantCulture);
         bool usesFile = !raw && packetFilePath is not null && SupportsPacketFile(command);
+        if (BuildPacketExample(command, raw, arguments, payload, usesFile) is not { } example)
+            return;
+
+        PacketExampleCode.Text = example;
+        PacketExampleStatus.Text = "";
+        PacketExampleOverlay.Visibility = Visibility.Visible;
+        PacketExampleClose.Focus();
+    }
+
+    /// <summary>根据当前请求生成独立的 SDK 示例。</summary>
+    internal static string? BuildPacketExample(byte command, bool raw, byte[] arguments, byte[] payload, bool usesFile)
+    {
+        var products = DisplayModel.Known
+            .Where(model => DeviceCommands.CanSend(model.ProductId, command, raw)
+                && DeviceCommands.AcceptsPacketValues(model.ProductId, command, raw, arguments))
+            .Select(model => $"0x{model.ProductId:X4}").ToArray();
+        if (products.Length == 0)
+            return null;
+
+        string id = raw ? $"0x{command:X2}" : command.ToString(System.Globalization.CultureInfo.InvariantCulture);
         string request;
         string prepareFile = "";
         if (usesFile)
         {
-            byte[] signature = PacketImageSignature(command).ToArray();
-            string validateImage = signature.Length == 0 ? "" :
-                $"if (!payload.AsSpan().StartsWith<byte>({HexArgument(signature)}))\n" +
-                "    throw new ArgumentException(\"The local file does not match the command format.\");\n";
+            string validateImage = command switch
+            {
+                101 => $"if (!payload.AsSpan().StartsWith<byte>({HexArgument(DisplaySession.JpegSignature.ToArray())}))\n" +
+                    "    throw new ArgumentException(\"The local file does not match the command format.\");\n",
+                102 => "DisplaySession.ValidateOverlay(payload);\n",
+                _ => ""
+            };
             string encodeLength = command == 39
                 ? "System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(arguments, 1024 * 1024);\n"
                     + "System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(arguments.AsSpan(4), payload.Length);\n"
@@ -404,18 +444,36 @@ public partial class MainWindow
                 {{encodeLength}}
 
                 """;
-            request = $"session.ExchangeCommand({id}, arguments, payload)";
+            request = EncryptedRequest("arguments", "payload");
+        }
+        else if (!raw && command == 102)
+        {
+            prepareFile = $"byte[] payload = {HexArgument(payload)};\nDisplaySession.ValidateOverlay(payload);\n";
+            request = EncryptedRequest(HexArgument(arguments), "payload");
         }
         else
         {
             request = raw
                 ? $"session.ExchangeRawCommand({id}, {HexArgument(arguments)})"
-                : arguments.Length == 0 && payload.Length == 0 && command is 10 or 50 or 100
-                    ? $"session.ReadVerifiedQueryResponse({id})"
-                    : $"session.ExchangeCommand({id}, {HexArgument(arguments)}, {HexArgument(payload)})";
+                : EncryptedRequest(HexArgument(arguments), HexArgument(payload));
         }
 
-        PacketExampleCode.Text = $$"""
+        string confirmDelete = "";
+        if (!raw && command == 42)
+        {
+            string path = System.Text.Encoding.ASCII.GetString(arguments.AsSpan(8));
+            confirmDelete = $$"""
+                const string deviceFile = {{System.Text.Json.JsonSerializer.Serialize(path)}};
+                Console.WriteLine($"Permanently delete {deviceFile} from {device.Model.Name} (device {index})?");
+                Console.WriteLine($"Device interface: {device.Path}");
+                Console.Write("Type DELETE to confirm: ");
+                if (!string.Equals(Console.ReadLine(), "DELETE", StringComparison.Ordinal))
+                    return;
+
+                """;
+        }
+
+        return $$"""
             using System;
             using System.Security.Cryptography;
             using TURZX.WinUsbDisplay;
@@ -429,8 +487,14 @@ public partial class MainWindow
                 return;
             }
 
-            {{prepareFile}}var device = devices[index];
-            byte[] key = DisplaySettings.ReadCommandKey();
+            var device = devices[index];
+            if (device.Model.ProductId is not ({{string.Join(" or ", products)}}))
+            {
+                Console.Error.WriteLine($"This request is unavailable for {device.Model.Name}.");
+                return;
+            }
+
+            {{confirmDelete}}{{prepareFile}}byte[] key = DisplaySettings.ReadCommandKey();
             try
             {
                 using var session = device.Open(key);
@@ -442,9 +506,9 @@ public partial class MainWindow
                 CryptographicOperations.ZeroMemory(key);
             }
             """;
-        PacketExampleStatus.Text = "";
-        PacketExampleOverlay.Visibility = Visibility.Visible;
-        PacketExampleClose.Focus();
+        string EncryptedRequest(string header, string data) => command == 99
+            ? $"session.ExchangeCommand({id}, {header}, {data})"
+            : $"session.ExchangeMatchingCommand({id}, {header}, {data}, {DeviceCommands.MinimumReplyBytes(command)})";
 
         // 用十六进制文本构造示例中的参数表达式。
         static string HexArgument(byte[] data) => data.Length == 0
@@ -532,7 +596,8 @@ public partial class MainWindow
         bool supported = SelectedDevice is not { } device || !valid
             || DeviceCommands.CanSend(device.Model.ProductId, id, raw);
         SendPacket.IsEnabled = !busy && valid && SelectedDevice is not null && supported;
-        ShowPacketExample.IsEnabled = !busy && valid && supported;
+        ShowPacketExample.IsEnabled = !busy && valid && supported
+            && DisplayModel.Known.Any(model => DeviceCommands.CanSend(model.ProductId, id, raw));
         bool presetAvailable = DeviceCommands.CanExecute(command);
         RunCommand.Visibility = presetAvailable ? Visibility.Visible : Visibility.Collapsed;
         RunCommand.IsEnabled = !busy && SelectedDevice is { } target && presetAvailable && command is not null

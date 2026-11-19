@@ -39,6 +39,8 @@ public class CommandPageSelectionTests
                         var (arguments, payload) = DeviceCommands.GetRequestFields((byte)command.Code, command.Raw);
                         Assert.Equal(arguments ? Visibility.Visible : Visibility.Collapsed, window.PacketArgumentsRow.Visibility);
                         Assert.Equal(payload ? Visibility.Visible : Visibility.Collapsed, window.PacketPayloadRow.Visibility);
+                        if (!command.Raw && command.Code == 51)
+                            Assert.Equal(Visibility.Collapsed, window.RunCommand.Visibility);
                         Assert.False(window.SendPacket.IsEnabled);
                     }
 
@@ -48,6 +50,9 @@ public class CommandPageSelectionTests
                     window.PacketChannel.SelectedIndex = 0;
                     Assert.Equal("GET_DEVICE_FILE_SIZE", Assert.IsType<DeviceCommand>(window.CommandList.SelectedItem).ProtocolName);
                     Assert.Equal(2, window.PacketArgumentsMode.SelectedIndex);
+                    window.OpenDocumentationLink("https://example.invalid/documentation",
+                        _ => throw new System.ComponentModel.Win32Exception(1155));
+                    Assert.Equal(StudioLanguage.T("CouldNotOpenDocumentationLink"), window.Status.Text);
                 }
                 finally { window.Close(); }
             }

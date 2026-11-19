@@ -47,7 +47,7 @@ public partial class MainWindow
 
         await RunDeviceControlAsync(T("WritingStartupSettings"), session =>
         {
-            session.SetStartupConfiguration(settings.Brightness, settings.StartupMode, settings.Rotation,
+            session.SetStartupConfiguration(settings.Brightness, settings.StartupMode, FirmwareRotation(device.Model, settings.Rotation),
                 settings.KeepAwakeOffline, settings.OfflineClockRotation);
             return T("StartupSettingsSent");
         }, message =>

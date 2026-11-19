@@ -15,13 +15,6 @@ public partial class MainWindow
     private static int PacketFileLimit(byte command) =>
         command == 39 ? 1024 * 1024 : command == 40 ? 100 * 1024 - 1 : DisplayFrameProcessor.MaxEncodedFrameBytes;
 
-    private static ReadOnlySpan<byte> PacketImageSignature(byte command) => command switch
-    {
-        101 => DisplaySession.JpegSignature,
-        102 => DisplaySession.PngSignature,
-        _ => []
-    };
-
     private void ResetPacketFile()
     {
         packetFilePath = null;
@@ -129,9 +122,11 @@ public partial class MainWindow
         byte[] payload = new byte[(int)length];
         await file.ReadExactlyAsync(payload, cancellation).ConfigureAwait(false);
 
-        if (!payload.AsSpan().StartsWith(PacketImageSignature(command)))
+        if (command == 102)
+            PacketInput.ValidatePng(payload);
+        if (command == 101 && !payload.AsSpan().StartsWith(DisplaySession.JpegSignature))
             throw UiError(new InvalidDataException("The selected file does not match the command format."),
-                command == 101 ? "PacketInvalidJpeg" : "PacketInvalidPng");
+                "PacketInvalidJpeg");
 
         if (command == 39)
         {

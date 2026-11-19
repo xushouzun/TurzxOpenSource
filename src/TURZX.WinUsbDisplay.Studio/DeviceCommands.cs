@@ -25,9 +25,24 @@ internal sealed record DeviceCommand(int Code, string ProtocolName, string Purpo
 /// <summary>提供设备命令目录、请求字段规则和应答格式化。</summary>
 internal static class DeviceCommands
 {
-    // 0123 的裸包会阻塞后续控制；关机已实测残留背光；其余项目缺少本型号可恢复的验证条件。
-    internal static bool CanSend(ushort product, byte command, bool raw) => product != 0x0123
-        || (!raw && command is not (12 or 51 or 52 or 61 or 62 or 125 or 251 or 252));
+    internal static bool CanSend(ushort product, byte command, bool raw)
+    {
+        // 散热与灯珠的裸协议用于独立 USB 控制器，Studio 的设备选择器只枚举屏幕。
+        if (raw)
+            return product != 0x0123 && command is not (0x11 or 0x60 or 0x61 or 0x62);
+        if (command is 61 or 62 || (command == 150 && product == 0x0021)
+            || (command == 125 && product != 0x0046))
+            return false;
+        return product != 0x0123 || command is not (12 or 51 or 52 or 251 or 252);
+    }
+
+    internal static bool AcceptsPacketValues(ushort product, byte command, bool raw, ReadOnlySpan<byte> arguments) =>
+        raw || product != 0x0123 || (command switch
+        {
+            13 => arguments is [0],
+            14 => arguments is [<= 80],
+            _ => true
+        });
 
     internal static int MinimumReplyBytes(byte command) => command switch
     {
@@ -126,14 +141,13 @@ internal static class DeviceCommands
 
     /// <summary>判断是否为命令提供 SDK 快捷操作。</summary>
     internal static bool CanExecute(DeviceCommand? command) =>
-        command is { Raw: false, Code: 51 or 52 or 111 or 114 or 123 };
+        command is { Raw: false, Code: 52 or 111 or 114 or 123 };
 
     /// <summary>通过 SDK 执行所选预设命令。</summary>
     internal static string Run(DisplaySession session, DeviceCommand command)
     {
         switch (command.Code)
         {
-            case 51: session.ShowDefaultClock(true); break;
             case 52: session.ShowDefaultClock(false); break;
             case 111: session.StopLocalVideo(); break;
             case 114: session.StopImageLoop(); break;

@@ -9,11 +9,15 @@ namespace TURZX.WinUsbDisplay.Tests;
 public class DeviceFileTests
 {
     /// <summary>验证启动配置使用 Win207 要求的字段顺序。</summary>
-    [Fact]
-    public void StartupConfigurationUsesWin207WireFieldOrder()
+    [Theory]
+    [InlineData(66, 100, 66)]
+    [InlineData(100, 80, 80)]
+    [InlineData(66, 80, 52)]
+    [InlineData(0, 80, 0)]
+    public void StartupConfigurationUsesWin207WireFieldOrder(int brightness, int limit, int expected)
     {
-        byte[] args = DisplaySession.EncodeStartupConfiguration(66, 100, 2, 3, true, 1);
-        Assert.Equal(new byte[] { 25, 2, 0, 3, 0, 1, 1 }, args);
+        byte[] args = DisplaySession.EncodeStartupConfiguration((byte)brightness, (byte)limit, 2, 3, true, 1);
+        Assert.Equal(new byte[] { (byte)expected, 2, 0, 3, 0, 1, 1 }, args);
     }
 
     /// <summary>验证路径长度编码和保留字节。</summary>

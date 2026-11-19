@@ -32,15 +32,17 @@ internal static class PacketInput
             Bytes(string.Join(' ', fields.Skip(1)), true).CopyTo(clock, 2);
             return clock;
         }
-        if (mode != 1 || raw || command is not (101 or 102 or 121 or 39))
+        if (mode == 1 && (raw && command == 0x61 || !raw && command == 251))
+            return EncodeCoolingArguments(text, raw);
+        if (mode != 1 || raw || command is not (101 or 102 or 121 or 39 or 252))
             return Bytes(text, mode == 1);
 
         string[] values = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (values.Length != (command == 39 ? 3 : command == 121 ? 2 : 1)
             || !uint.TryParse(values[0], NumberStyles.None, CultureInfo.InvariantCulture, out uint length))
             throw new FormatException();
-        byte[] arguments = new byte[command == 39 ? 9 : command == 121 ? 5 : 4];
-        BinaryPrimitives.WriteUInt32BigEndian(arguments, length);
+        byte[] arguments = new byte[command switch { 39 => 9, 121 => 5, 252 => 8, _ => 4 }];
+        BinaryPrimitives.WriteUInt32BigEndian(arguments.AsSpan(command == 252 ? 4 : 0), length);
         if (command == 121)
         {
             if (!byte.TryParse(values[1], NumberStyles.None, CultureInfo.InvariantCulture, out byte final) || final > 1)
@@ -58,9 +60,38 @@ internal static class PacketInput
         return arguments;
     }
 
+    private static byte[] EncodeCoolingArguments(string text, bool raw)
+    {
+        string[] values = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (values.Length != (raw ? 2 : 4)
+            || !ushort.TryParse(values[0], NumberStyles.None, CultureInfo.InvariantCulture, out ushort pump))
+            throw new FormatException();
+
+        if (raw)
+        {
+            if (!ushort.TryParse(values[1], NumberStyles.None, CultureInfo.InvariantCulture, out ushort fan))
+                throw new FormatException();
+            byte[] result = new byte[4];
+            BinaryPrimitives.WriteUInt16BigEndian(result, pump);
+            BinaryPrimitives.WriteUInt16BigEndian(result.AsSpan(2), fan);
+            return result;
+        }
+
+        byte[] synchronized = [0xFF, 0x0F, 0xA1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        BinaryPrimitives.WriteUInt16BigEndian(synchronized.AsSpan(4), pump);
+        Bytes(string.Join(' ', values.Skip(1)), true).CopyTo(synchronized, 6);
+        return synchronized;
+    }
+
     internal static void Validate(byte command, bool raw, byte[] arguments, byte[] payload)
     {
-        if (raw) return;
+        if (raw)
+        {
+            if (command == 0x61 && (arguments.Length is < 4 or > 63
+                || arguments.AsSpan(4).ContainsAnyExcept((byte)0)))
+                throw new FormatException();
+            return;
+        }
         bool valid = command switch
         {
             13 => arguments.Length == 1 && arguments[0] <= 3,
@@ -68,7 +99,7 @@ internal static class PacketInput
             15 => arguments.Length == 1 && arguments[0] is >= 1 and <= 60,
             49 => arguments.Length == 1 && arguments[0] <= 1,
             51 => IsClock(arguments),
-            125 => arguments.Length == 7,
+            125 => arguments is [<= 100, <= 2, 0, <= 3, 0, <= 1, 0],
             101 or 102 => arguments.Length == 4 && payload.Length is > 0 and <= DisplayFrameProcessor.MaxEncodedFrameBytes
                 && BinaryPrimitives.ReadUInt32BigEndian(arguments) == payload.Length,
             121 => arguments.Length == 5 && arguments[4] <= 1 && payload.Length is > 0 and <= 4 * 1024 * 1024
@@ -77,9 +108,16 @@ internal static class PacketInput
             40 => payload.Length is > 0 and < 100 * 1024
                 && arguments.Length >= 9
                 && BinaryPrimitives.ReadUInt32BigEndian(arguments.AsSpan(4)) == payload.Length,
+            251 => arguments.Length == 16 && arguments.AsSpan().StartsWith<byte>([0xFF, 0x0F, 0xA1, 0])
+                && !arguments.AsSpan(9).ContainsAnyExcept((byte)0),
+            252 => arguments.Length == 8 && BinaryPrimitives.ReadUInt32BigEndian(arguments) == 0
+                && payload.Length > 3 && BinaryPrimitives.ReadUInt32BigEndian(arguments.AsSpan(4)) == payload.Length
+                && BinaryPrimitives.ReadUInt16BigEndian(payload) != 0,
             _ => true
         };
         if (!valid) throw new FormatException();
+        if (command == 102)
+            ValidatePng(payload);
         if (HasPath(command, raw) || command == 40)
         {
             if (arguments.Length < 9 || BinaryPrimitives.ReadUInt32BigEndian(arguments) != arguments.Length - 8
@@ -89,10 +127,19 @@ internal static class PacketInput
             try
             {
                 if (arguments.AsSpan(8).ContainsAnyInRange((byte)128, byte.MaxValue)
-                    || (command == 40 && path.EndsWith('/'))) throw new FormatException();
+                    || (command is 40 or 42 && path.EndsWith('/'))) throw new FormatException();
                 _ = DisplaySession.EncodeDevicePath(path);
             }
             catch (ArgumentException error) { throw new FormatException("Invalid device path.", error); }
+        }
+    }
+
+    internal static void ValidatePng(ReadOnlySpan<byte> payload)
+    {
+        try { DisplaySession.ValidateOverlay(payload); }
+        catch (System.IO.InvalidDataException error)
+        {
+            throw StudioLanguage.UiError(error, "PacketInvalidPng");
         }
     }
 
@@ -128,6 +175,10 @@ internal static class PacketInput
         1 when !raw && command == 14 => "PacketDecimalBrightnessHint",
         1 when !raw && command == 15 => "PacketDecimalFrameRateHint",
         1 when !raw && command == 49 => "PacketDecimalSyncHint",
+        1 when !raw && command == 125 => "StartupConfigurationArgumentsHint",
+        1 when !raw && command == 251 => "PacketDecimalPumpFansHint",
+        1 when !raw && command == 252 => "PacketDecimalLengthHint",
+        1 when raw && command == 0x61 => "PacketDecimalCoolingHint",
         _ => "PacketDecimalBytesHint"
     };
 }

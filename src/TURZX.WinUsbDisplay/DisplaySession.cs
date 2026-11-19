@@ -376,7 +376,7 @@ public sealed class DisplaySession : IDisposable
     {
         byte[] arguments = EncodeStartupConfiguration(brightness, brightnessLimit, startupMode, rotation,
             keepAwakeOffline, offlineClockRotation);
-        ExchangeCommand(125, arguments);
+        ExchangeMatchingCommand(125, arguments, [], 2, CancellationToken.None);
     }
 
     /// <summary>按固件字段顺序生成持久化启动配置。</summary>
@@ -389,7 +389,7 @@ public sealed class DisplaySession : IDisposable
         ArgumentOutOfRangeException.ThrowIfGreaterThan(offlineClockRotation, (byte)3);
 
         // 原版 Win207 界面隐藏了休眠定时器，新配置使用零值。
-        return [(byte)(brightness * brightnessLimit / 255), startupMode, 0, rotation, 0,
+        return [(byte)(brightness * brightnessLimit / 100), startupMode, 0, rotation, 0,
             keepAwakeOffline ? (byte)1 : (byte)0, offlineClockRotation];
     }
 
