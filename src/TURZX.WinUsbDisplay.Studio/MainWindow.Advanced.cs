@@ -13,7 +13,8 @@ public partial class MainWindow
 
     /// <summary>检查所选型号是否支持固件内置时钟。</summary>
     private static bool SupportsFirmwareClock(DisplayModel? model) =>
-        model?.ProductId is 0x0046 or 0x0123;
+        model is { ProductId: 0x0046 } && DeviceCommands.CanSend(model.ProductId, 51, raw: false)
+            && DeviceCommands.CanSend(model.ProductId, 52, raw: false);
 
     /// <summary>清空高级面板中此前显示的设备状态。</summary>
     private void ResetAdvancedStatus()

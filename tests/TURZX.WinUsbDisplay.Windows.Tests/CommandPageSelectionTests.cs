@@ -25,6 +25,16 @@ public class CommandPageSelectionTests
                 {
                     window.CommandsNav.IsChecked = true;
                     Assert.Equal(40, window.CommandList.Items.OfType<DeviceCommand>().Count());
+                    Assert.Same(DeviceCommands.All[0], window.CommandList.Items[0]);
+                    int desktopModeIndex = window.CommandList.Items.IndexOf(
+                        DeviceCommands.All.Single(command => command is { Code: 150, Raw: false }));
+                    var recoveryEntry = Assert.Single(window.CommandList.Items.Cast<object>(),
+                        entry => entry is not DeviceCommand);
+                    Assert.Same(recoveryEntry, window.CommandList.Items[desktopModeIndex + 1]);
+                    var recovery = Assert.IsType<MainWindow.DesktopRecoveryEntry>(recoveryEntry);
+                    Assert.Equal("SWITCH_TO_MONITOR_MODE", recovery.ProtocolName);
+                    Assert.Equal("HID", recovery.CodeLabel);
+                    Assert.Equal(StudioLanguage.T("ReturnToMonitor"), recovery.Purpose);
 
                     foreach (var command in window.CommandList.Items.OfType<DeviceCommand>().ToArray())
                     {

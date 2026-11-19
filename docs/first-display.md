@@ -15,7 +15,7 @@ $env:WINUSB_DISPLAY_COMMAND_KEY = '<固件维护者提供的 16 位十六进制�
 .\TURZX.WinUsbDisplay.Studio.exe
 ```
 
-如果屏幕当前显示 Windows 桌面，在 Studio 的「设备指令」列表中选择「切回副屏模式」。在右侧刷新桌面模式设备，按序列号选中屏幕后点击「切回副屏模式」。恢复后屏幕会重新出现在 Studio 的 USB 设备列表中。[桌面模式与副屏模式的操作说明](win207-protocol.md)
+如果屏幕当前显示 Windows 桌面，在 Studio 的「设备指令」列表中选择 `SWITCH_TO_MONITOR_MODE`。在右侧刷新桌面模式设备，按序列号选中屏幕后点击「切回副屏模式」。恢复后屏幕会重新出现在 Studio 的 USB 设备列表中。[桌面模式与副屏模式的操作说明](win207-protocol.md)
 
 设备管理器能看到已处于副屏模式的屏幕而 Studio 列表为空时，请向驱动提供方核对 WinUSB 接口 GUID。如果提供方确认使用自定义接口 GUID，关闭 Studio，在 PowerShell 设置环境变量后从该窗口重新启动。
 
@@ -34,6 +34,6 @@ Use the 7-inch `USB\VID_1CBE&PID_0070` as the starting point. Firmware `turzx_00
 4. Close vendor software that is using the display. Set `WINUSB_DISPLAY_COMMAND_KEY` to the supplied 16 hexadecimal characters in PowerShell, then launch Studio from that session. Select the display and read the firmware version in **Advanced controls** to check it against the version supplied with the key.
 5. In **Media → Foreground source**, switch to **Choose image**, then use **Browse** to select a JPEG or PNG. Clear the background and click **Start playback**. Check the image and orientation on the physical display, then click **Stop playback**. Record the Studio version, firmware version, orientation and result.
 
-If the display is showing the Windows desktop, select **Return to USB display** in Studio's **Device commands** list. In the right pane, refresh the desktop-mode devices, select the display by serial number and click **Return to USB display**. The display will reappear in Studio's USB device list when it returns. [Mode-switching instructions](win207-protocol.en.md)
+If the display is showing the Windows desktop, select `SWITCH_TO_MONITOR_MODE` in Studio's **Device commands** list. In the right pane, refresh the desktop-mode devices, select the display by serial number and click **Return to USB display**. The display will reappear in Studio's USB device list when it returns. [Mode-switching instructions](win207-protocol.en.md)
 
 If Device Manager sees a display already in USB display mode while Studio's list stays empty, ask the driver supplier which WinUSB interface GUID it registers. For a custom GUID, use the PowerShell example above and launch Studio from that same session.

@@ -6,15 +6,26 @@ namespace TURZX.WinUsbDisplay.Studio;
 
 public partial class MainWindow
 {
-    private sealed class DesktopRecoveryEntry
+    internal sealed class DesktopRecoveryEntry
     {
-        public string ProtocolName => T("ReturnToMonitor");
+        public string ProtocolName => "SWITCH_TO_MONITOR_MODE";
         public string CodeLabel => "HID";
-        public string Purpose => T("DesktopModeDevice");
+        public string Purpose => T("ReturnToMonitor");
     }
 
     private readonly DesktopRecoveryEntry desktopRecoveryEntry = new();
-    private IEnumerable<object> CommandEntries => DeviceCommands.All.Cast<object>().Prepend(desktopRecoveryEntry);
+    private IEnumerable<object> CommandEntries
+    {
+        get
+        {
+            foreach (DeviceCommand command in DeviceCommands.All)
+            {
+                yield return command;
+                if (command is { Code: 150, Raw: false })
+                    yield return desktopRecoveryEntry;
+            }
+        }
+    }
     private bool IsDesktopRecoverySelected => ReferenceEquals(CommandList.SelectedItem, desktopRecoveryEntry);
     private bool scanningDesktopDevices;
 

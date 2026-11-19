@@ -109,7 +109,7 @@
   "Brightness": "亮度",
   "BrightnessPercentage": "亮度百分比",
   "Orientation": "方向",
-  "AutoSendOrientationHint": "方向变更会自动保存并下发。",
+  "PlaybackOrientationHint": "方向会保存，并在开始播放时应用。",
   "ScreenOrientation": "屏幕旋转角度",
   "Cancel": "取消",
   "Confirm": "确认",

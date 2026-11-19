@@ -109,7 +109,7 @@
   "Brightness": "Brightness",
   "BrightnessPercentage": "Brightness percentage",
   "Orientation": "Orientation",
-  "AutoSendOrientationHint": "Orientation changes are saved and sent automatically.",
+  "PlaybackOrientationHint": "The orientation is saved and applied when playback starts.",
   "ScreenOrientation": "Screen orientation",
   "Cancel": "Cancel",
   "Confirm": "Confirm",

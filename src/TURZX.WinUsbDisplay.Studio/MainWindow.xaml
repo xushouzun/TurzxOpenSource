@@ -362,7 +362,7 @@
                                     <TextBlock Grid.Row="1" Text="{DynamicResource L.Orientation}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                     <ComboBox Grid.Row="1" Grid.Column="1" Margin="0,2" HorizontalAlignment="Left" x:Name="Rotation" SelectedIndex="0" MinWidth="72" VerticalAlignment="Center"
                                               SelectionChanged="OnRotationChanged"
-                                              ToolTip="{DynamicResource L.AutoSendOrientationHint}" AutomationProperties.Name="{DynamicResource L.ScreenOrientation}">
+                                              ToolTip="{DynamicResource L.PlaybackOrientationHint}" AutomationProperties.Name="{DynamicResource L.ScreenOrientation}">
                                         <ComboBoxItem Content="0°" />
                                         <ComboBoxItem Content="90°" />
                                         <ComboBoxItem Content="180°" />

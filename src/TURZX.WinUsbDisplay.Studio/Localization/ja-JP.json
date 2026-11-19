@@ -109,7 +109,7 @@
   "Brightness": "明るさ",
   "BrightnessPercentage": "明るさの割合",
   "Orientation": "向き",
-  "AutoSendOrientationHint": "向きの変更は自動で保存され、デバイスに適用されます。",
+  "PlaybackOrientationHint": "向きの設定は保存され、再生開始時に適用されます。",
   "ScreenOrientation": "画面の回転角度",
   "Cancel": "キャンセル",
   "Confirm": "確認",
