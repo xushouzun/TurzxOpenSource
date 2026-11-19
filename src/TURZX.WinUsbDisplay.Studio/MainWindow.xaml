@@ -4,7 +4,7 @@
     xmlns:local="clr-namespace:TURZX.WinUsbDisplay.Studio"
     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     ThemeMode="Dark"
-    Title="TURZX WinUSB Display Studio" Width="1080" Height="690" MinWidth="820" MinHeight="560"
+    Title="TURZX WinUSB Display Studio" Icon="Assets/Studio.ico" Width="1080" Height="690" MinWidth="820" MinHeight="560"
     WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen" Background="#10141F" Foreground="#F3F6FE"
     FontFamily="Segoe UI Variable, Segoe UI, Global User Interface" UseLayoutRounding="True">
     <shell:WindowChrome.WindowChrome>

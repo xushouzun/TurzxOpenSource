@@ -5,8 +5,10 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationIcon>Assets/Studio.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets/Studio.ico" />
     <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Windows.Tests" />
     <EmbeddedResource Include="Localization/*.json" LogicalName="Studio.Localization.%(Filename)%(Extension)" />
     <None Include="../../docs/developer-guide*.md;../../docs/win207-protocol*.md"
