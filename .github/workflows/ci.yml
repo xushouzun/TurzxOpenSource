@@ -17,9 +17,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Verify build, tests, coverage, CLI and browser
+      - name: Set up FFmpeg
         shell: pwsh
-        run: ./tools/verify-project.ps1
+        run: ./tools/install-ci-ffmpeg.ps1
+
+      - name: Verify build, tests, coverage, CLI, browser and media
+        shell: pwsh
+        run: ./tools/verify-project.ps1 -Media
 
       - name: Upload verification evidence
         if: always()

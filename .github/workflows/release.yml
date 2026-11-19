@@ -19,9 +19,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Verify and package Studio and SDK
+      - name: Set up FFmpeg
         shell: pwsh
-        run: ./tools/verify-project.ps1 -Package
+        run: ./tools/install-ci-ffmpeg.ps1
+      - name: Verify media and package Studio and SDK
+        shell: pwsh
+        run: ./tools/verify-project.ps1 -Package -Media
       - name: Upload verification evidence
         if: always()
         uses: actions/upload-artifact@v4
