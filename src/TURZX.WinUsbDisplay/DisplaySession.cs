@@ -366,7 +366,7 @@ public sealed class DisplaySession : IDisposable
         byte[] arguments = EncodeDevicePath(path);
         if (path.EndsWith('/'))
             throw new ArgumentException("Expected a file path.", nameof(path));
-        ExchangeCommand(42, arguments);
+        ExchangeMatchingCommand(42, arguments, [], 2);
     }
 
     /// <summary>列出显示设备为指定目录返回的文件名。</summary>
@@ -383,23 +383,30 @@ public sealed class DisplaySession : IDisposable
         byte[] arguments = EncodeDevicePath(directory);
         (byte[] Response, bool IsComplete) replies;
         lock (gate)
-            replies = CollectDirectoryReplies(() => ExchangeCommand(99, arguments), cancellation);
+            replies = CollectDirectoryReplies(directory, () => ExchangeCommand(99, arguments), cancellation);
 
         cancellation.ThrowIfCancellationRequested();
         return (ParseDeviceFileList(Encoding.UTF8.GetString(replies.Response), replies.IsComplete), replies.IsComplete);
     }
 
     /// <summary>收集目录的分段应答，并标明是否完整。</summary>
-    internal static (byte[] Response, bool IsComplete) CollectDirectoryReplies(Func<byte[]> request, CancellationToken cancellation)
+    internal static (byte[] Response, bool IsComplete) CollectDirectoryReplies(string directory, Func<byte[]> request,
+        CancellationToken cancellation)
     {
         using var response = new MemoryStream();
+        string text = "";
+        int matchingStart = -1;
         // 固件最多用 20 个 512 字节的应答返回目录列表。
         for (int i = 0; i < 20; i++)
         {
             cancellation.ThrowIfCancellationRequested();
             try
             {
-                response.Write(request());
+                byte[] packet = request();
+                // 已知的控制和图像回包可能滞留在 IN 端点，不能拼入目录文本。
+                if (IsNonDirectoryReply(packet))
+                    continue;
+                response.Write(packet);
             }
             catch (DeviceResponseException ex) when (ex.Failure == DeviceResponseFailure.NoData)
             {
@@ -408,21 +415,66 @@ public sealed class DisplaySession : IDisposable
                     throw;
                 break;
             }
+
+            cancellation.ThrowIfCancellationRequested();
+            text = Encoding.UTF8.GetString(response.GetBuffer(), 0, (int)response.Length).Replace("\0", "");
+            if (IsEmptyDirectoryStatus(text) || text == "result:nodir-createfailed")
+                return (Encoding.UTF8.GetBytes(text), true);
+
+            matchingStart = FindRequestedDirectory(text, directory);
+            if (matchingStart >= 0 && IsDirectoryReplyComplete(text, matchingStart))
+                return (Encoding.UTF8.GetBytes(text[matchingStart..]), true);
         }
 
         cancellation.ThrowIfCancellationRequested();
-        byte[] bytes = response.ToArray();
-        string text = Encoding.UTF8.GetString(bytes).Replace("\0", "");
-        return (bytes, IsDirectoryReplyComplete(text));
+        if (matchingStart >= 0)
+            return (Encoding.UTF8.GetBytes(text[matchingStart..]), false);
+        if (text.Length == 0)
+            return (response.ToArray(), false);
+
+        throw new DeviceResponseException(DeviceResponseFailure.UnexpectedReply,
+            "The display did not return a listing for the requested directory.", response: response.ToArray());
     }
 
-    private static bool IsDirectoryReplyComplete(string text)
+    private static bool IsNonDirectoryReply(ReadOnlySpan<byte> packet)
     {
-        if (IsEmptyDirectoryStatus(text))
-            return true;
+        if (packet.Length != 512 || packet is not [_, 200, _, _, _, _, 0, 0, ..])
+            return false;
 
-        int marker = text.IndexOf("file:", StringComparison.Ordinal);
-        return marker >= 0 && FindNextDirectoryListing(text, marker).RepeatsDirectory;
+        // 0xC8 也可能是文件名中 UTF-8 字符的起始字节。保留可能属于文本的分片。
+        if (packet[2] is >= 0x80 and <= 0xbf && !packet.Slice(2, 4).ContainsAnyInRange((byte)1, (byte)31))
+            return false;
+
+        int end = packet[0] switch
+        {
+            42 or 52 or 101 or 102 or 123 => 8,
+            98 => 12, // 文件大小是应答偏移 8 的四字节小端字段。
+            _ => 0
+        };
+        return end != 0 && !packet[end..].ContainsAnyExcept((byte)0);
+    }
+
+    private static int FindRequestedDirectory(string text, string directory)
+    {
+        ReadOnlySpan<char> expected = directory.AsSpan().TrimEnd('/');
+        for (int marker = text.IndexOf("file:", StringComparison.Ordinal); marker >= 0;
+            marker = text.IndexOf("file:", marker + "file:".Length, StringComparison.Ordinal))
+        {
+            int header = text.LastIndexOf("dir:", marker, StringComparison.Ordinal);
+            if (header >= 0)
+            {
+                var path = text.AsSpan(header + "dir:".Length, marker - header - "dir:".Length);
+                if (path.StartsWith("/") && path.TrimEnd('/').SequenceEqual(expected))
+                    return header;
+            }
+        }
+        return -1;
+    }
+
+    private static bool IsDirectoryReplyComplete(string text, int start)
+    {
+        int marker = text.IndexOf("file:", start, StringComparison.Ordinal);
+        return FindNextDirectoryListing(text, marker).RepeatsDirectory;
     }
 
     private static (int Boundary, bool RepeatsDirectory) FindNextDirectoryListing(string text, int firstMarker)
@@ -437,10 +489,13 @@ public sealed class DisplaySession : IDisposable
         if (nextHeader < 0)
             return (nextMarker, false);
 
-        int boundary = entries + nextHeader;
+        int nextStart = entries + nextHeader;
         int firstHeader = text.LastIndexOf("dir:", firstMarker, StringComparison.Ordinal);
         bool repeats = firstHeader >= 0 && text.AsSpan(firstHeader, firstMarker - firstHeader)
-            .SequenceEqual(text.AsSpan(boundary, nextMarker - boundary));
+            .SequenceEqual(text.AsSpan(nextStart, nextMarker - nextStart));
+        const string prefix = "result:";
+        int boundary = text.AsSpan(entries, nextStart - entries).EndsWith(prefix, StringComparison.Ordinal)
+            ? nextStart - prefix.Length : nextStart;
         return (boundary, repeats);
     }
 
@@ -451,9 +506,12 @@ public sealed class DisplaySession : IDisposable
 
         const string status = "nodir-createdone";
         const string prefixed = "result:" + status;
+        const string existingEmpty = "result:dir:file:";
         while (!text.IsEmpty)
         {
-            if (text.StartsWith(prefixed, StringComparison.Ordinal))
+            if (text.StartsWith(existingEmpty, StringComparison.Ordinal))
+                text = text[existingEmpty.Length..];
+            else if (text.StartsWith(prefixed, StringComparison.Ordinal))
                 text = text[prefixed.Length..];
             else if (text.StartsWith(status, StringComparison.Ordinal))
                 text = text[status.Length..];
@@ -479,11 +537,28 @@ public sealed class DisplaySession : IDisposable
         {
             StopPlayback();
             ShowDefaultClock(false);
-            byte[] reply = ExchangeCommand(command, arguments);
-            int statusOffset = command == 110 ? 8 : 1;
-            if (reply.Length <= statusOffset || reply[statusOffset] != 200)
+            byte[] reply = ExchangeMatchingCommand(command, arguments, [], command == 110 ? 9 : 2, CancellationToken.None);
+            if (!IsDeviceFilePlaybackAccepted(command, reply, () =>
+                    ExchangeMatchingCommand(112, [], [], 9, CancellationToken.None)))
                 throw new DeviceResponseException(DeviceResponseFailure.UnexpectedReply, "The display rejected the media file.", response: reply);
         }
+    }
+
+    internal static bool IsDeviceFilePlaybackAccepted(byte command, byte[] reply, Func<byte[]> readPlaybackState)
+    {
+        if (reply.Length == 0 || reply[0] != command)
+            return false;
+
+        int statusOffset = command == 110 ? 8 : 1;
+        if (reply.Length > statusOffset && reply[statusOffset] == 200)
+            return true;
+
+        // 部分固件将 110 的确认码放在偏移 1。通过独立的只读状态查询确认播放。
+        if (command != 110 || reply.Length < 9 || reply[1] != 200 || reply[8] != 0)
+            return false;
+
+        byte[] state = readPlaybackState();
+        return state.Length >= 9 && state[0] == 112 && state[8] != 0;
     }
 
     /// <summary>将设备文件路径转换为请求参数。</summary>
@@ -507,7 +582,7 @@ public sealed class DisplaySession : IDisposable
     {
         const string marker = "file:";
         string text = reply.Replace("\0", "");
-        if (text.Length == 0)
+        if (text.Length == 0 || IsEmptyDirectoryStatus(text))
             return [];
 
         if (text.StartsWith("result:nodir-createfailed", StringComparison.Ordinal))
@@ -515,9 +590,6 @@ public sealed class DisplaySession : IDisposable
                 "The display could not create the requested directory.", response: Encoding.UTF8.GetBytes(reply));
 
         int start = text.IndexOf(marker, StringComparison.Ordinal);
-        if (start < 0 && IsEmptyDirectoryStatus(text))
-            return [];
-
         if (start < 0)
             throw new DeviceResponseException(DeviceResponseFailure.UnexpectedReply, "The display returned an unrecognized directory listing.");
 
@@ -1024,9 +1096,16 @@ public sealed class DisplaySession : IDisposable
     }
 
     /// <summary>只发送一次指令，跳过积压的其他命令应答，不重新执行控制操作。</summary>
-    internal byte[] ExchangeMatchingCommand(byte command, byte[] arguments, byte[] payload,
-        int minimumLength, CancellationToken cancellation)
+    /// <param name="command">Win207 命令 ID，对应应答首字节。</param>
+    /// <param name="arguments">从请求头偏移 8 开始写入的参数。</param>
+    /// <param name="payload">追加在 USB 请求头之后的数据。</param>
+    /// <param name="minimumLength">应答的最小字节数。</param>
+    /// <param name="cancellation">在读取应答之间检查的取消令牌。</param>
+    /// <returns>与命令编号匹配且达到最小长度的原始应答。</returns>
+    public byte[] ExchangeMatchingCommand(byte command, byte[] arguments, byte[] payload,
+        int minimumLength, CancellationToken cancellation = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(minimumLength, 1);
         lock (gate)
             return ReadMatchingReply(command, minimumLength, () => ExchangeCommand(command, arguments, payload),
                 () => transport.ReadResponse(), cancellation);
@@ -1036,7 +1115,12 @@ public sealed class DisplaySession : IDisposable
         Func<byte[]> readNext, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        byte[] reply = send();
+        return ReadMatchingReply(command, minimumLength, send(), readNext, cancellation);
+    }
+
+    private static byte[] ReadMatchingReply(byte command, int minimumLength, byte[] reply,
+        Func<byte[]> readNext, CancellationToken cancellation)
+    {
         for (int skipped = 0; ; skipped++)
         {
             cancellation.ThrowIfCancellationRequested();

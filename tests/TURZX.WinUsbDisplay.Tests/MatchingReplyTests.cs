@@ -4,6 +4,24 @@ namespace TURZX.WinUsbDisplay.Tests;
 
 public class MatchingReplyTests
 {
+    [Theory]
+    [InlineData(42)]
+    [InlineData(52)]
+    [InlineData(101)]
+    [InlineData(123)]
+    [InlineData(125)]
+    public void DeviceWritesRequireAMatchingCompleteReplyWithoutResending(int id)
+    {
+        byte command = (byte)id;
+        int sends = 0;
+        var replies = new Queue<byte[]>([new byte[] { command }, new byte[] { command, 200 }]);
+        byte[] result = DisplaySession.ReadMatchingReply(command, 2,
+            () => { sends++; return [14, 200]; }, () => replies.Dequeue(), CancellationToken.None);
+        Assert.Equal(new byte[] { command, 200 }, result);
+        Assert.Equal(1, sends);
+        Assert.Empty(replies);
+    }
+
     [Fact]
     public void StaleRepliesAreDrainedWithoutResendingTheControlCommand()
     {

@@ -99,10 +99,10 @@ Console.WriteLine(Convert.ToHexString(temperatures));
 | 17 | GET_H264_BLOCK_SIZE | 无请求参数。应答至少 12 字节，8–11 为 u32be 字节数。0 使用 198 KiB，Studio 拒绝大于 4 MiB 的块大小 | 设备指令 |
 | 101 | DISPLAY_JPEG | 头 8–11 为 u32be 字节数，USB 偏移 512 起为完整 JPEG。应答状态码未统一定义 | 媒体 |
 | 102 | DISPLAY_PNG_OVERLAY | 头 8–11 为 u32be 字节数，USB 偏移 512 起为完整 PNG。Alpha 由固件合成，实时 PNG 可与 121 交替发送 | 媒体、实时输入 |
-| 110 | START_LOCAL_H264_PLAYBACK | 头 8–11 为 u32be 路径长度，ASCII 路径从 16 起。SDK 的设备内视频播放要求应答偏移 8 的状态为 200。应答格式可能因固件而异 | 高级控制 · 设备内媒体 |
+| 110 | START_LOCAL_H264_PLAYBACK | 头 8–11 为 u32be 路径长度，ASCII 路径从 16 起。SDK 在匹配指令 110 的应答中检查偏移 8 的状态 200。若兼容固件以 `6E C8` 确认且偏移 8 为 0，SDK 用 112 查询播放状态确认。 | 高级控制 · 设备内媒体 |
 | 111 | STOP_LOCAL_H264_PLAYBACK | 头参数全零，停止设备存储中的 H.264 播放。主机推流用 123 停止 | 设备指令 |
 | 112 | GET_LOCAL_H264_PLAYBACK_STATE | 无请求参数。应答至少 9 字节，8 为 u8，0 表示停止，非零表示播放中 | 设备指令 |
-| 113 | DISPLAY_LOCAL_JPEG | 路径布局同 110。SDK 的设备内图片播放要求应答偏移 1 的状态为 200 | 高级控制 · 设备内媒体 |
+| 113 | DISPLAY_LOCAL_JPEG | 路径布局同 110。SDK 的设备内图片播放要求应答匹配指令 113，且偏移 1 的状态为 200 | 高级控制 · 设备内媒体 |
 | 114 | STOP_LOCAL_JPEG_LOOP | 头参数全零，停止设备内 JPEG 循环。固件未提供可移植的图层清除应答 | 设备指令 |
 | 121 | WRITE_H264_STREAM_BLOCK | 头 8–11 为块长 u32be，12 在末块为 1，其余块为 0。USB 偏移 512 起是 Annex B 数据。应答至少 9 字节，8 为队列深度 u8 | 媒体、实时输入 |
 | 122 | GET_H264_QUEUE_DEPTH | 常规查询头参数全零。应答至少 9 字节，8 为队列深度 u8。同步扩展见下文 | 设备指令 |
@@ -119,7 +119,7 @@ Console.WriteLine(Convert.ToHexString(temperatures));
 | 40 | WRITE_DEVICE_FILE | 头 8–11 为 u32be 路径长度，12–15 为 u32be 文件长度，ASCII 路径从 16 起，USB 偏移 512 起为文件内容。Studio 接收小于 100 KiB 的文件 | 设备指令 |
 | 42 | DELETE_DEVICE_PATH | 删除文件或目录。头 8–11 为 u32be 路径长度，ASCII 路径从 16 起。统一成功码未定义，可重新查询目录核对 | 高级控制 · 设备内媒体 |
 | 98 | GET_DEVICE_FILE_SIZE | 头 8–11 为 u32be 路径长度，ASCII 路径从 16 起。应答至少 12 字节，偏移 8–11 为 u32le 文件大小，单位为字节 | 设备指令 |
-| 99 | LIST_DEVICE_DIRECTORY | 路径布局同 98。SDK 最多请求 20 次并拼接 UTF-8 回包，解析 `file:` 后以 `/` 分隔的文件名。`nodir-createdone` 表示创建了空目录，`result:nodir-createfailed` 表示设备创建目录失败 | 高级控制 · 设备内媒体 |
+| 99 | LIST_DEVICE_DIRECTORY | 路径布局同 98。SDK 最多读取 20 个应答，从与请求路径匹配的 UTF-8 列表中提取 `file:` 后以 `/` 分隔的文件名。读取在列表完整或收到明确的空目录应答时结束。`result:dir:file:` 表示已有目录为空，`nodir-createdone` 表示新建了空目录，`result:nodir-createfailed` 表示目录创建失败 | 高级控制 · 设备内媒体 |
 | 100 | GET_STORAGE_CAPACITY | 应答 8、12、16 为 SD 总量、已用、可用。20、24、28 为 Flash 对应字段。字段为小端 32 位，单位 KiB | 高级控制 · 设备指令 |
 | 246 | TEST_USB_THROUGHPUT | USB 写入吞吐量检查。现有资料记录了零填充缓冲区，其他请求字段未指定 | 仅协议参考，Studio 不提供预设 |
 | 251 | SYNC_PUMP_AND_FAN_OUTPUTS | 从明文 8 起写入 16 字节。参数内 0–2 为 FF 0F A1，4–5 为 u16be 泵值，6–8 为三路风扇值 | 总览查阅 |

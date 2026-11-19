@@ -42,6 +42,7 @@ public class DeviceFileTests
         Assert.Equal(new[] { "one.jpg", "图.jpg" },
             DisplaySession.ParseDeviceFileList("dir:/file:one.jp\0g/图.jpg/../one.jpg/\0"));
         Assert.Empty(DisplaySession.ParseDeviceFileList("nodir-createdone\0"));
+        Assert.Empty(DisplaySession.ParseDeviceFileList("result:dir:file:\0result:dir:file:\0"));
         Assert.Empty(DisplaySession.ParseDeviceFileList(new string('\0', 512)));
         Assert.Equal(new[] { "nodir-createdone.png" }, DisplaySession.ParseDeviceFileList("file:nodir-createdone.png/"));
         Assert.Throws<DeviceResponseException>(() => DisplaySession.ParseDeviceFileList("unexpected"));
@@ -72,6 +73,7 @@ public class DeviceFileTests
     /// <summary>验证重复出现的目录元数据不会成为文件条目。</summary>
     [Theory]
     [InlineData("dir:/file:one.jpg/dir:/file:one.jpg/", true)]
+    [InlineData("result:dir:/file:one.jpg/result:dir:/file:one.jpg/", true)]
     [InlineData("dir:/file:one.jpgdir:/file:one.jpg/", true)]
     [InlineData("dir:/file:one.jpg/dir:/", false)]
     public void RepeatedDirectoryMetadataIsNotAFile(string reply, bool complete)
@@ -85,7 +87,7 @@ public class DeviceFileTests
     {
         using var cancellation = new CancellationTokenSource();
         int requests = 0;
-        var error = Assert.Throws<OperationCanceledException>(() => DisplaySession.CollectDirectoryReplies(() =>
+        var error = Assert.Throws<OperationCanceledException>(() => DisplaySession.CollectDirectoryReplies("/", () =>
         {
             requests++;
             cancellation.Cancel();
@@ -100,9 +102,9 @@ public class DeviceFileTests
     [Fact]
     public void DirectoryTimeoutAfterAReplyStillReturnsPartialData()
     {
-        byte[] payload = "file:one.jpg/"u8.ToArray();
+        byte[] payload = "dir:/file:one.jpg/"u8.ToArray();
         int requests = 0;
-        var result = DisplaySession.CollectDirectoryReplies(() => requests++ == 0
+        var result = DisplaySession.CollectDirectoryReplies("/", () => requests++ == 0
             ? payload : throw new DeviceResponseException(DeviceResponseFailure.NoData, "No data."),
             CancellationToken.None);
 
@@ -115,7 +117,7 @@ public class DeviceFileTests
     public void DirectoryReplyLimitDoesNotConfirmATruncatedFilename()
     {
         int requests = 0;
-        var result = DisplaySession.CollectDirectoryReplies(() => ++requests switch
+        var result = DisplaySession.CollectDirectoryReplies("/", () => ++requests switch
         {
             1 => "dir:/file:one.jpg/"u8.ToArray(),
             20 => "two.jp"u8.ToArray(),
@@ -132,7 +134,7 @@ public class DeviceFileTests
     public void RepeatedDirectoryHeaderConfirmsThePreviousListing()
     {
         int requests = 0;
-        var result = DisplaySession.CollectDirectoryReplies(() => ++requests switch
+        var result = DisplaySession.CollectDirectoryReplies("/", () => ++requests switch
         {
             1 => "dir:/file:one.jpg"u8.ToArray(),
             2 => "dir:/file:one"u8.ToArray(),
@@ -140,6 +142,7 @@ public class DeviceFileTests
         }, CancellationToken.None);
 
         Assert.True(result.IsComplete);
+        Assert.Equal(2, requests);
         Assert.Equal(new[] { "one.jpg" },
             DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
     }
@@ -153,13 +156,43 @@ public class DeviceFileTests
             "dir:/other/file:unrelated.jpg/"u8.ToArray(),
             "dir:/current/file:one.jpg/two.jpg/"u8.ToArray()
         ]);
-        var result = DisplaySession.CollectDirectoryReplies(() => replies.TryDequeue(out var reply)
+        var result = DisplaySession.CollectDirectoryReplies("/current", () => replies.TryDequeue(out var reply)
             ? reply
             : throw new DeviceResponseException(DeviceResponseFailure.NoData, "No data."), CancellationToken.None);
 
         Assert.False(result.IsComplete);
         Assert.Equal(new[] { "one.jpg" },
             DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    [Fact]
+    public void StaleDirectoryRepeatsCannotDisplaceTheRequestedListing()
+    {
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies("/target/", () => Encoding.UTF8.GetBytes(++requests switch
+        {
+            1 or 2 => "dir:/other/file:old.jpg/",
+            3 => "dir:/tar",
+            4 => "get/file:new.jpg/",
+            5 => "dir:/target/file:new.jpg/",
+            _ => throw new InvalidOperationException("The matching repeat completed the listing.")
+        }), CancellationToken.None);
+
+        Assert.True(result.IsComplete);
+        Assert.Equal(5, requests);
+        Assert.Equal(new[] { "new.jpg" }, DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response)));
+    }
+
+    [Theory]
+    [InlineData("dir:/other/file:old.jpg/")]
+    [InlineData("dir:/target-other/file:old.jpg/")]
+    [InlineData("dir:/file:old.jpg/")]
+    [InlineData("file:old.jpg/")]
+    public void UnscopedOrForeignDirectoryFilesAreRejected(string reply)
+    {
+        var error = Assert.Throws<DeviceResponseException>(() =>
+            DisplaySession.CollectDirectoryReplies("/target/", () => Encoding.UTF8.GetBytes(reply), CancellationToken.None));
+        Assert.Equal(DeviceResponseFailure.UnexpectedReply, error.Failure);
     }
 
     [Fact]
@@ -195,7 +228,7 @@ public class DeviceFileTests
     public void AllPaddingDoesNotConfirmAnEmptyDirectory()
     {
         byte[] padding = new byte[512];
-        var result = DisplaySession.CollectDirectoryReplies(() => padding, CancellationToken.None);
+        var result = DisplaySession.CollectDirectoryReplies("/", () => padding, CancellationToken.None);
 
         Assert.False(result.IsComplete);
         Assert.Equal(20 * padding.Length, result.Response.Length);
@@ -206,25 +239,87 @@ public class DeviceFileTests
     public void ExplicitMissingDirectoryCanReturnACompleteEmptyListing()
     {
         int requests = 0;
-        var result = DisplaySession.CollectDirectoryReplies(() =>
+        var result = DisplaySession.CollectDirectoryReplies("/", () =>
             requests++ == 0 ? "nodir-createdone"u8.ToArray() : new byte[512], CancellationToken.None);
 
         Assert.True(result.IsComplete);
+        Assert.Equal(1, requests);
         Assert.Empty(DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
     }
 
     [Theory]
     [InlineData("nodir-createdone")]
     [InlineData("result:nodir-createdone")]
-    public void RepeatedEmptyDirectoryRepliesConfirmAnEmptyListing(string status)
+    [InlineData("result:dir:file:")]
+    public void ExplicitEmptyDirectoryReplyStopsAfterTheFirstRequest(string status)
     {
         byte[] reply = Encoding.UTF8.GetBytes(status.PadRight(512, '\0'));
         int requests = 0;
-        var result = DisplaySession.CollectDirectoryReplies(() =>
+        var result = DisplaySession.CollectDirectoryReplies("/", () =>
             requests++ < 2 ? reply : new byte[512], CancellationToken.None);
 
         Assert.True(result.IsComplete);
+        Assert.Equal(1, requests);
         Assert.Empty(DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response), result.IsComplete));
+    }
+
+    [Theory]
+    [InlineData(101, "result:dir:file:")]
+    [InlineData(102, "result:nodir-createdone")]
+    [InlineData(42, "result:dir:file:")]
+    [InlineData(52, "result:dir:file:")]
+    [InlineData(123, "result:dir:file:")]
+    public void OldAcknowledgementDoesNotMaskAnEmptyDirectory(int command, string status)
+    {
+        int requests = 0;
+        byte[] stale = new byte[512];
+        Convert.FromHexString("65C82E6786050000").CopyTo(stale, 0);
+        stale[0] = (byte)command;
+        var result = DisplaySession.CollectDirectoryReplies("/usr/data/img/", () => ++requests switch
+        {
+            1 => stale,
+            2 => Encoding.UTF8.GetBytes(status.PadRight(512, '\0')),
+            _ => throw new InvalidOperationException("The empty response should terminate the read.")
+        }, CancellationToken.None);
+
+        Assert.True(result.IsComplete);
+        Assert.Empty(DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response)));
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public void OldFileSizeReplyWithPayloadDoesNotMaskAnEmptyDirectory()
+    {
+        byte[] staleSize = new byte[512];
+        Convert.FromHexString("62C8E4059B0500001C400000").CopyTo(staleSize, 0);
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies("/usr/data/img/", () => ++requests switch
+        {
+            1 => staleSize,
+            2 => "result:dir:file:"u8.ToArray(),
+            _ => throw new InvalidOperationException("The empty response should terminate the read.")
+        }, CancellationToken.None);
+
+        Assert.True(result.IsComplete);
+        Assert.Empty(DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response)));
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public void DirectoryContinuesAcrossAFragmentResemblingAFileSizeReply()
+    {
+        byte[] textFragment = new byte[512];
+        "bȣ/"u8.CopyTo(textFragment);
+        int requests = 0;
+        var result = DisplaySession.CollectDirectoryReplies("/usr/data/img/", () => ++requests switch
+        {
+            1 or 3 => "dir:/usr/data/img/file:"u8.ToArray(),
+            2 => textFragment,
+            _ => throw new InvalidOperationException("The repeated header should terminate the read.")
+        }, CancellationToken.None);
+
+        Assert.True(result.IsComplete);
+        Assert.Equal(new[] { "bȣ" }, DisplaySession.ParseDeviceFileList(Encoding.UTF8.GetString(result.Response)));
     }
 
     /// <summary>验证取消后不再重试查询或复位管道。</summary>
