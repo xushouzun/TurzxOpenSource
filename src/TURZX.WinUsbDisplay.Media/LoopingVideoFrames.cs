@@ -8,10 +8,13 @@ public sealed class LoopingVideoFrames : IAsyncDisposable
     private static readonly TimeSpan ExitGracePeriod = TimeSpan.FromSeconds(1);
     /// <summary>将背景视频解码成原始像素的 FFmpeg 进程。</summary>
     private readonly Process decoder;
+    private readonly Task decoderExit;
     /// <summary>持续读取 FFmpeg 标准错误的任务。</summary>
     private readonly ProcessDiagnostics diagnostics;
     /// <summary>一帧 BGR32 画面所占的字节数。</summary>
     private readonly int frameBytes;
+    /// <summary>隔离管道读取与调用方可立即复用的缓冲区。</summary>
+    private byte[]? pendingFrame;
     /// <summary>指示帧读取中断后不能继续使用解码器。</summary>
     private bool interrupted;
     private bool disposed;
@@ -31,6 +34,7 @@ public sealed class LoopingVideoFrames : IAsyncDisposable
         this.frameBytes = frameBytes;
         decoder = VideoConverter.StartFfmpeg(start);
         diagnostics = new ProcessDiagnostics(decoder.StandardError);
+        decoderExit = decoder.WaitForExitAsync();
     }
 
     private static ProcessStartInfo CreateDecoderStartInfo(string path, DisplayModel canvas, byte fps, MediaLayout? layout)
@@ -57,32 +61,59 @@ public sealed class LoopingVideoFrames : IAsyncDisposable
     /// <summary>读取一个完整帧。调用方须串行读取。</summary>
     public async ValueTask<byte[]> ReadAsync(CancellationToken cancellation)
     {
+        CheckCanRead(cancellation);
         var pixels = GC.AllocateUninitializedArray<byte>(frameBytes);
-        await ReadAsync(pixels, cancellation).ConfigureAwait(false);
+        await ReadFrameAsync(pixels, cancellation).ConfigureAwait(false);
         return pixels;
     }
 
-    /// <summary>将一个完整帧读入调用方提供的缓冲区。调用方须串行读取。取消进行中的读取会停止解码器。</summary>
+    /// <summary>将一个完整帧读入调用方提供的缓冲区。调用方须串行读取。取消进行中的读取会停止解码器并保留调用方的缓冲区内容。</summary>
     public async ValueTask ReadAsync(Memory<byte> pixels, CancellationToken cancellation)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (pixels.Length != frameBytes)
             throw new ArgumentException("The buffer size must match one video frame.", nameof(pixels));
+        CheckCanRead(cancellation);
+
+        // 整帧成功后再交给调用方。关闭管道后迟到的读取也不会写入调用方的内存。
+        var frame = pendingFrame ??= GC.AllocateUninitializedArray<byte>(frameBytes);
+        await ReadFrameAsync(frame, cancellation).ConfigureAwait(false);
+        frame.AsMemory().CopyTo(pixels);
+    }
+
+    private void CheckCanRead(CancellationToken cancellation)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
         cancellation.ThrowIfCancellationRequested();
         if (interrupted)
             throw new InvalidOperationException("The decoder was stopped after an interrupted frame read.");
+    }
 
+    private async ValueTask ReadFrameAsync(Memory<byte> pixels, CancellationToken cancellation)
+    {
         Task read = decoder.StandardOutput.BaseStream.ReadExactlyAsync(pixels, cancellation).AsTask();
         try
         {
-            await read.WaitAsync(cancellation).ConfigureAwait(false);
+            if (!read.IsCompleted
+                && await Task.WhenAny(read, decoderExit).WaitAsync(cancellation).ConfigureAwait(false) == decoderExit)
+            {
+                // 正常退出后仍可能读到最后一帧，但继承的管道不能阻止检测解码器退出。
+                try { await read.WaitAsync(ExitGracePeriod, cancellation).ConfigureAwait(false); }
+                catch (TimeoutException error)
+                {
+                    CloseOutputAndObserveRead(read);
+                    throw new EndOfStreamException("The decoder exited with its output pipe still open.", error);
+                }
+            }
+            else
+                await read.ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            // 终止写入进程以结束待处理的管道读取，避免从半帧位置继续读取。
+            // 子进程可能仍持有输出管道。关闭本地读端，取消时不等待迟到的管道读取。
             interrupted = true;
-            StopDecoder();
-            await read.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            try { StopDecoder(); }
+            finally { CloseOutputAndObserveRead(read); }
             throw;
         }
         catch (EndOfStreamException error)
@@ -93,7 +124,7 @@ public sealed class LoopingVideoFrames : IAsyncDisposable
                 // 输出管道可能先于进程退出关闭，先给 FFmpeg 时间报告真实的退出状态。
                 using var exitDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 exitDeadline.CancelAfter(ExitGracePeriod);
-                await decoder.WaitForExitAsync(exitDeadline.Token).ConfigureAwait(false);
+                await decoderExit.WaitAsync(exitDeadline.Token).ConfigureAwait(false);
                 exitCode = decoder.ExitCode;
                 await diagnostics.Completion.WaitAsync(exitDeadline.Token)
                     .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -116,6 +147,15 @@ public sealed class LoopingVideoFrames : IAsyncDisposable
         }
     }
 
+    private void CloseOutputAndObserveRead(Task read)
+    {
+        try { decoder.StandardOutput.Dispose(); }
+        finally { _ = ObserveReadAsync(read); }
+    }
+
+    private static async Task ObserveReadAsync(Task read) =>
+        await read.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
     /// <summary>停止解码进程，等待退出并收尾诊断流读取。</summary>
     public async ValueTask DisposeAsync()
     {
@@ -127,7 +167,7 @@ public sealed class LoopingVideoFrames : IAsyncDisposable
         using (decoder.StandardError)
         {
             StopDecoder();
-            await decoder.WaitForExitAsync().ConfigureAwait(false);
+            await decoderExit.ConfigureAwait(false);
             // 子进程可能仍持有标准错误管道。关闭本地读端可以结束等待。
             await VideoConverter.FinishDiagnosticsAsync(decoder.StandardError, diagnostics.Completion).ConfigureAwait(false);
         }

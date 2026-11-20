@@ -13,6 +13,38 @@ namespace TURZX.WinUsbDisplay.Tests;
 public class HtmlCaptureTests
 {
     [Fact]
+    public void BrowserDiscoveryPrefersPerUserChromeAndFallsBackToInstalledEdge()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            string system = Path.Combine(directory.FullName, "system");
+            string user = Path.Combine(directory.FullName, "user");
+            string edge = CreateExecutable(system, "Microsoft", "Edge", "msedge.exe");
+            string chrome = CreateExecutable(user, "Google", "Chrome", "chrome.exe");
+
+            Assert.Equal("custom-browser.exe", HtmlCapture.ResolveBrowserExecutable("custom-browser.exe", system, user));
+            Assert.Equal(chrome, HtmlCapture.ResolveBrowserExecutable(null, system, user));
+            File.Delete(chrome);
+            Assert.Equal(edge, HtmlCapture.ResolveBrowserExecutable(" ", system, user));
+            File.Delete(edge);
+            Assert.Throws<FileNotFoundException>(() => HtmlCapture.ResolveBrowserExecutable(null, system, user));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+
+        static string CreateExecutable(string root, string vendor, string browser, string executable)
+        {
+            string path = Path.Combine(root, vendor, browser, "Application", executable);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, []);
+            return path;
+        }
+    }
+
+    [Fact]
     public async Task BrowserRotationRejectsUnsupportedAnglesBeforeStartingBrowser() =>
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => HtmlCapture.OpenAsync("unused.html",
             new DisplayModel("test", 0, 96, 64), CancellationToken.None, true, 1, 4));

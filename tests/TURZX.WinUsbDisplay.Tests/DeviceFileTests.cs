@@ -452,6 +452,32 @@ public class DeviceFileTests
     }
 
     [Fact]
+    public void VerifiedQueryDrainsTruncatedMatchingRepliesWithoutResendingTheQuery()
+    {
+        var gate = new Lock();
+        byte[] expected = new byte[32];
+        expected[0] = 100;
+        int requests = 0;
+        var replies = new Queue<byte[]>([new byte[] { 100, 200 }, new byte[] { 111 }, expected]);
+        byte[] received = DisplaySession.RetryVerifiedQuery(gate, 100, 32,
+            () =>
+            {
+                requests++;
+                return replies.Dequeue();
+            },
+            () => throw new InvalidOperationException("Unexpected reset."), CancellationToken.None,
+            readNextResponse: () =>
+            {
+                Assert.True(gate.IsHeldByCurrentThread);
+                return replies.Dequeue();
+            });
+
+        Assert.Same(expected, received);
+        Assert.Equal(1, requests);
+        Assert.Empty(replies);
+    }
+
+    [Fact]
     public void VerifiedQueryBoundsStaleRepliesAndPreservesTheLastResponse()
     {
         byte[] stale = [111];

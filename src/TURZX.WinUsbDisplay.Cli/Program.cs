@@ -51,7 +51,7 @@ try
                 using (var session = selected.Value.Open(key.Value))
                     Console.WriteLine(session.ReadFirmwareVersion(cancellation.Token));
                 break;
-            case ["image", _, var path]:
+            case ["image", _, var path] when !string.IsNullOrWhiteSpace(path):
                 var imageDevice = selected.Value;
                 byte[] imageKey = key.Value;
                 using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096,
@@ -69,7 +69,7 @@ try
                 break;
             case ["frames", _, var inputRate, .. var background]
                 when byte.TryParse(inputRate, out byte captureFps) && captureFps is >= 1 and <= 60
-                && background.Length is 0 or 2:
+                && (background is [] || background is [var backgroundPath, _] && !string.IsNullOrWhiteSpace(backgroundPath)):
                 await SendFramesAsync(selected, key, captureFps, background, cancellation.Token);
                 break;
             case ["stop", _]:
@@ -81,7 +81,8 @@ try
                     session.SetBrightness(brightness);
                 break;
             case ["video", _, var source, var rate, .. var options]
-                when byte.TryParse(rate, out byte fps) && fps is >= 1 and <= 60 && options is [] or ["--loop"]:
+                when !string.IsNullOrWhiteSpace(source) && byte.TryParse(rate, out byte fps)
+                && fps is >= 1 and <= 60 && options is [] or ["--loop"]:
                 var videoDevice = selected.Value;
                 byte[] videoKey = key.Value;
                 // 先转码再打开 USB 会话，避免在等 FFmpeg 时占用设备。
@@ -163,8 +164,10 @@ static async Task SendFramesAsync(Lazy<DisplayDevice> selected, Lazy<byte[]> key
     {
         if (convert)
             await VideoConverter.ConvertAsync(source!, prepared!, device.Model, videoFps, cancellation);
+        cancellation.ThrowIfCancellationRequested();
         using var video = prepared is null ? null : File.OpenRead(prepared);
         using var input = Console.OpenStandardInput();
+        cancellation.ThrowIfCancellationRequested();
         using var session = device.Open(commandKey);
         await LiveScene.RunAsync(session, token => FrameInput.ReadDisplayPngAsync(input, token), video, videoFps,
             captureFps, cancellation);

@@ -55,14 +55,17 @@ public partial class MainWindow : Window
     private string? preferredDevicePath;
     /// <summary>为设备枚举和待重连续播安排后续检查。</summary>
     private readonly DispatcherTimer deviceTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly Func<DisplayDevice[]> discoverDisplays;
 
     /// <summary>初始化主窗口及其控件。</summary>
     public MainWindow() : this(StudioPreferences.Load()) { }
 
     /// <summary>使用指定的持久化设置初始化主窗口。</summary>
-    internal MainWindow(StudioPreferences preferences)
+    internal MainWindow(StudioPreferences preferences, Func<DisplayDevice[]>? discoverDisplays = null)
     {
         this.preferences = preferences;
+        this.discoverDisplays = discoverDisplays ??
+            (static () => DisplayDevice.Discover(DisplaySettings.InterfaceGuid).ToArray());
         StudioLanguage.Set(preferences.Language);
         InitializeComponent();
         LanguageSelector.ItemsSource = StudioLanguage.Options;
@@ -181,7 +184,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>异步枚举设备，并处理断开和恢复播放。</summary>
-    private async Task RefreshDevicesAsync()
+    internal async Task RefreshDevicesAsync()
     {
         if (closing)
             return;
@@ -199,8 +202,7 @@ public partial class MainWindow : Window
         refreshing = true;
         try
         {
-            var found = await Task.Run(() =>
-                DisplayDevice.Discover(DisplaySettings.InterfaceGuid).ToArray());
+            var found = await Task.Run(discoverDisplays);
             if (closing)
                 return;
             // 先处理断开并登记续播，再用枚举结果重建设备列表。
@@ -227,16 +229,16 @@ public partial class MainWindow : Window
     }
 
     /// <summary>用最新的设备快照重建列表并保留可恢复的选择。</summary>
-    private void ApplyDeviceSnapshot(DisplayDevice[] found, bool refreshChoices = false)
+    internal void ApplyDeviceSnapshot(DisplayDevice[] found, bool refreshChoices = false, string? selectDevicePath = null)
     {
-        if (!refreshChoices && devices.SequenceEqual(found))
+        if (!refreshChoices && selectDevicePath is null && devices.SequenceEqual(found))
         {
             UpdateDeviceSummary();
             return;
         }
 
         bool wasSelected = SelectedDevice is not null;
-        string? preferred = preferredDevicePath;
+        string? preferred = selectDevicePath ?? preferredDevicePath;
         devices = found;
         // 等待重连续播的设备保留在列表中，并标记为已断开。
         var choices = found.Select(device => new DeviceChoice(device))

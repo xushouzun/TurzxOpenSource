@@ -40,7 +40,7 @@ public partial class MainWindow
             var found = await Task.Run(DesktopModeDevice.Discover);
             if (closing) return;
             DesktopModeDevices.ItemsSource = found;
-            DesktopModeDevices.SelectedItem = found.FirstOrDefault(d => d.Serial == serial);
+            DesktopModeDevices.SelectedItem = found.FirstOrDefault(d => string.Equals(d.Serial, serial, StringComparison.OrdinalIgnoreCase));
             if (DesktopModeDevices.SelectedItem is null && found.Count == 1) DesktopModeDevices.SelectedIndex = 0;
             DesktopModeStatus.SetResourceReference(TextBlock.TextProperty,
                 ResourceKey(found.Count == 0 ? "DesktopModeNone" : "DesktopModeSelectTarget"));
@@ -83,7 +83,7 @@ public partial class MainWindow
                 var restored = found.FirstOrDefault(d => d.Path.Contains("#" + target.Serial + "#", StringComparison.OrdinalIgnoreCase));
                 if (restored is not null)
                 {
-                    preferredDevicePath = restored.Path;
+                    ApplyDeviceSnapshot(found.ToArray(), selectDevicePath: restored.Path);
                     refreshAfterOperation = true;
                     result = T("DesktopModeRestored", target.Serial);
                     DesktopModeDevices.ItemsSource = null;

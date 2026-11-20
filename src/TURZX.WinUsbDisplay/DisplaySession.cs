@@ -1095,10 +1095,11 @@ public sealed class DisplaySession : IDisposable
                 try
                 {
                     reply = request();
-                    // 停止播放等命令可能留下旧应答。保持会话锁并继续读，避免重发查询让应答进一步积压。
+                    // 停止播放等命令可能留下旧应答，也可能先收到同编号的短包。
+                    // 保持会话锁并继续读，避免重发查询让应答进一步积压。
                     // 每次最多跳过 20 个旧包；无匹配应答时仍按原来的三次查询上限报告失败。
                     for (int skipped = 0; readNextResponse is not null && reply.Length > 0
-                        && reply[0] != command && skipped < 20; skipped++)
+                        && (reply[0] != command || reply.Length < minimumLength) && skipped < 20; skipped++)
                     {
                         cancellation.ThrowIfCancellationRequested();
                         reply = readNextResponse();

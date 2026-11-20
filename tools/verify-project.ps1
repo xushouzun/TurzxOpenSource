@@ -220,7 +220,10 @@ try {
             foreach ($case in @(
                 @{ Name = 'unknown'; Args = @('unknown') },
                 @{ Name = 'brightness-range'; Args = @('brightness', '0', '101') },
+                @{ Name = 'image-blank-path'; Args = @('image', '-1', ' ') },
+                @{ Name = 'video-blank-path'; Args = @('video', '-1', ' ', '20') },
                 @{ Name = 'video-rate'; Args = @('video', '0', 'ignored', '0') },
+                @{ Name = 'frames-blank-background'; Args = @('frames', '-1', '20', ' ', '20') },
                 @{ Name = 'frames-rate'; Args = @('frames', '0', '0') }
             )) {
                 $invalid = Invoke-CheckedProcess "cli-$($case.Name)" 'dotnet' (@($cli) + $case.Args) -ExpectedExitCode 1 -TimeoutSeconds 30
@@ -228,7 +231,7 @@ try {
             }
             $device = Invoke-CheckedProcess 'cli-negative-device' 'dotnet' @($cli, 'info', '-1') -ExpectedExitCode 1 -TimeoutSeconds 30
             if ($device.Stderr -notmatch 'Select a device index printed by list') { throw 'Unexpected invalid-device output.' }
-            $report.offlineE2E = 'CLI help and five invalid-input paths passed as real processes; no hardware I/O was attempted.'
+            $report.offlineE2E = 'CLI help and eight invalid-input paths passed as real processes; no hardware I/O was attempted.'
             $smokeArguments = @('run', '--project', 'tools/TURZX.WinUsbDisplay.Smoke', '-c', 'Release')
             if ($Media) { $smokeArguments += @('--', '--media') }
             Invoke-CheckedProcess 'browser-smoke' 'dotnet' $smokeArguments | Out-Null

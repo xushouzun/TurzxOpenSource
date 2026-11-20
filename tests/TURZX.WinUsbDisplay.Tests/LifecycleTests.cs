@@ -6,6 +6,22 @@ namespace TURZX.WinUsbDisplay.Tests;
 
 public class LifecycleTests
 {
+    [Fact]
+    public async Task SlideshowRetriesAFileAfterItsPrefetchFails()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        int attempts = 0;
+        await using var slideshow = new SlideshowCapture(["first.png", "second.png"], TimeSpan.Zero,
+            bytes => bytes, (path, _) => path == "first.png" ? Task.FromResult<byte[]>([1])
+                : Interlocked.Increment(ref attempts) == 1 ? Task.FromException<byte[]>(new FileNotFoundException(path))
+                : Task.FromResult<byte[]>([2]));
+
+        Assert.Equal(new byte[] { 1 }, await slideshow.ReadChangedFrameAsync(deadline.Token));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => slideshow.ReadChangedFrameAsync(deadline.Token).AsTask());
+        Assert.Equal(new byte[] { 2 }, await slideshow.ReadChangedFrameAsync(deadline.Token));
+        Assert.Equal(2, attempts);
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -61,7 +77,10 @@ public class LifecycleTests
     [InlineData(true, false)]
     [InlineData(false, false)]
     [InlineData(false, true)]
-    public async Task ConverterDoesNotWaitForInheritedDiagnosticsPipe(bool cancel, bool finishDiagnostics)
+    [InlineData(true, false, true)]
+    [InlineData(false, false, true)]
+    public async Task MediaCancellationAndCleanupDoNotWaitForInheritedPipes(bool cancel, bool finishDiagnostics,
+        bool readDecoderOutput = false)
     {
         if (!OperatingSystem.IsWindows())
             return;
@@ -75,13 +94,24 @@ public class LifecycleTests
         {
             await File.WriteAllTextAsync(childScript, $"[IO.File]::WriteAllText('{childId.Replace("'", "''")}', [string]$PID)\nStart-Sleep -Seconds 60\n");
             await File.WriteAllTextAsync(parentScript,
-                $"@echo off\r\nstart \"\" /b powershell.exe -NoProfile -WindowStyle Hidden -File \"{childScript}\"\r\n:wait\r\nif not exist \"{childId}\" goto wait\r\necho wrapper diagnostics 1>&2\r\nexit /b 7\r\n");
+                $"@echo off\r\nstart \"\" /b powershell.exe -NoProfile -WindowStyle Hidden -File \"{childScript}\"\r\n:wait\r\nif not exist \"{childId}\" goto wait\r\necho wrapper diagnostics 1>&2\r\n"
+                + (readDecoderOutput ? "echo x\r\n" : "") + "exit /b 7\r\n");
             var start = new ProcessStartInfo("cmd.exe")
             {
                 UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true,
+                RedirectStandardOutput = readDecoderOutput,
                 Arguments = $"/d /c \"\"{parentScript}\"\""
             };
-            conversion = finishDiagnostics ? FinishInheritedDiagnosticsAsync() : VideoConverter.RunAsync(start, cancellation.Token);
+            var pixels = new byte[32];
+            conversion = readDecoderOutput ? ReadDecoderFrameAsync()
+                : finishDiagnostics ? FinishInheritedDiagnosticsAsync() : VideoConverter.RunAsync(start, cancellation.Token);
+
+            async Task<string> ReadDecoderFrameAsync()
+            {
+                await using var decoder = new LoopingVideoFrames(start, pixels.Length);
+                await decoder.ReadAsync(pixels, cancel ? cancellation.Token : CancellationToken.None);
+                return "unexpected frame";
+            }
 
             async Task<string> FinishInheritedDiagnosticsAsync()
             {
@@ -96,13 +126,15 @@ public class LifecycleTests
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (!File.Exists(childId))
                 await Task.Delay(20, deadline.Token);
-            // The wrapper has exited, while its child keeps the inherited stderr handle open.
+            // The wrapper has exited, while its child keeps the inherited pipe handles open.
             await Task.Delay(150, deadline.Token);
             Assert.False(conversion.IsCompleted);
             if (cancel)
             {
                 cancellation.Cancel();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => conversion.WaitAsync(TimeSpan.FromSeconds(2)));
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => conversion.WaitAsync(TimeSpan.FromSeconds(3)));
+                if (readDecoderOutput)
+                    Assert.Equal(new byte[pixels.Length], pixels);
             }
             else if (finishDiagnostics)
             {
@@ -112,9 +144,12 @@ public class LifecycleTests
             }
             else
             {
-                var error = await Assert.ThrowsAsync<FfmpegProcessException>(() => conversion.WaitAsync(TimeSpan.FromSeconds(3)));
+                var error = await Assert.ThrowsAsync<FfmpegProcessException>(() =>
+                    conversion.WaitAsync(TimeSpan.FromSeconds(readDecoderOutput ? 5 : 3)));
                 Assert.Equal(7, error.ExitCode);
                 Assert.Contains("wrapper diagnostics", error.Diagnostics);
+                if (readDecoderOutput)
+                    Assert.Equal(new byte[pixels.Length], pixels);
             }
         }
         finally

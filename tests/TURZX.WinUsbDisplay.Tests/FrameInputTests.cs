@@ -66,6 +66,26 @@ public class FrameInputTests
         DisplaySession.ValidateOverlay(png);
     }
 
+    [Fact]
+    public void DisplayFrameRejectsADuplicateHeader()
+    {
+        byte[] png = RgbaPng();
+        byte[] duplicateHeader = [.. png[..33], .. png[8..33], .. png[33..]];
+        Assert.Throws<InvalidDataException>(() => DisplaySession.ValidateOverlay(duplicateHeader));
+    }
+
+    [Fact]
+    public void DisplayFrameAllowsMetadataAroundButNotBetweenImageDataChunks()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAAEFsT2yAAAAB0lEQVR4nGP4z8AAMDymtgAAAAxJREFURkCC4T8YAABLxwn3riWxEwAAAABJRU5ErkJggg==");
+        byte[] text = Convert.FromHexString("0000000B744558745469746C65004672616D654E275A84");
+        int nextImageChunk = 33 + 12 + BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(33));
+        DisplaySession.ValidateOverlay([.. png[..33], .. text, .. png[33..^12], .. text, .. png[^12..]]);
+        byte[] interruptedImageData = [.. png[..nextImageChunk], .. text, .. png[nextImageChunk..]];
+        Assert.Throws<InvalidDataException>(() => DisplaySession.ValidateOverlay(interruptedImageData));
+    }
+
     /// <summary>作为测试输入的示例帧字节。</summary>
     private static MemoryStream Frame(byte[] png)
     {

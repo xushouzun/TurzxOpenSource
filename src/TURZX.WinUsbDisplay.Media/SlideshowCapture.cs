@@ -92,9 +92,19 @@ public sealed class SlideshowCapture(
             }
         }
 
-        byte[] frame = nextFrame is { } prepared
-            ? await prepared.WaitAsync(cancellation).ConfigureAwait(false)
-            : await LoadFrameAsync(index, cancellation).ConfigureAwait(false);
+        byte[] frame;
+        try
+        {
+            frame = nextFrame is { } prepared
+                ? await prepared.WaitAsync(cancellation).ConfigureAwait(false)
+                : await LoadFrameAsync(index, cancellation).ConfigureAwait(false);
+        }
+        catch when (!cancellation.IsCancellationRequested && nextFrame is { IsFaulted: true })
+        {
+            // 预取失败后保留当前索引，让下次取帧重新读取该文件。
+            nextFrame = null;
+            throw;
+        }
         lock (stateGate)
         {
             cancellation.ThrowIfCancellationRequested();

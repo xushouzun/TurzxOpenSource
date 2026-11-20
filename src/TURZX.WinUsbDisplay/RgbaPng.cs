@@ -47,15 +47,29 @@ internal static class RgbaPng
 
         using var compressed = new MemoryStream();
         ReadOnlySpan<byte> remaining = png[8..];
+        bool seenImageData = false;
+        bool endedImageData = false;
         while (!remaining.IsEmpty)
         {
             int length = BinaryPrimitives.ReadInt32BigEndian(remaining);
             var typeAndData = remaining.Slice(4, 4 + length);
+            var type = typeAndData[..4];
             uint stored = BinaryPrimitives.ReadUInt32BigEndian(remaining[(8 + length)..]);
             if (ComputeCrc(typeAndData) != stored)
                 throw new InvalidDataException("The PNG contains a damaged chunk.");
-            if (typeAndData[..4].SequenceEqual("IDAT"u8))
+            if (type.SequenceEqual("IDAT"u8))
+            {
+                if (endedImageData)
+                    throw new InvalidDataException("The PNG image data chunks must be consecutive.");
+                seenImageData = true;
                 compressed.Write(typeAndData[4..]);
+            }
+            else
+            {
+                if (type.SequenceEqual("IHDR"u8) && remaining.Length != png.Length - 8)
+                    throw new InvalidDataException("The PNG contains more than one image header.");
+                endedImageData |= seenImageData;
+            }
             remaining = remaining[(length + 12)..];
         }
 

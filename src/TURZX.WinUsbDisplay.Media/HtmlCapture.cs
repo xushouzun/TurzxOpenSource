@@ -143,12 +143,11 @@ public sealed class HtmlCapture : IAsyncDisposable
         using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         startup.CancelAfter(TimeSpan.FromSeconds(20));
         var token = startup.Token;
-        string chrome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            "Google", "Chrome", "Application", "chrome.exe");
-        string executable = Environment.GetEnvironmentVariable("WINUSB_DISPLAY_BROWSER")
-            ?? (File.Exists(chrome) ? chrome : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge",
-                "Application", "msedge.exe"));
+        string executable = browserStart?.FileName ?? ResolveBrowserExecutable(
+            Environment.GetEnvironmentVariable("WINUSB_DISPLAY_BROWSER"),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
         var start = new ProcessStartInfo(executable)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true
@@ -240,6 +239,25 @@ public sealed class HtmlCapture : IAsyncDisposable
         {
             throw new TimeoutException($"HTML capture startup timed out after 20 seconds while {stage}.");
         }
+    }
+
+    /// <summary>查找系统级和当前用户安装的 Chrome 或 Edge。</summary>
+    internal static string ResolveBrowserExecutable(string? configured, params string[] installationRoots)
+    {
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured;
+
+        foreach (string browser in new[] { Path.Combine("Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine("Microsoft", "Edge", "Application", "msedge.exe") })
+        {
+            foreach (string root in installationRoots)
+            {
+                if (root.Length > 0 && File.Exists(Path.Combine(root, browser)))
+                    return Path.Combine(root, browser);
+            }
+        }
+
+        throw new FileNotFoundException("Chrome or Edge was not found. Install a browser or set WINUSB_DISPLAY_BROWSER to its executable.");
     }
 
     /// <summary>连接页面 WebSocket 并启动后台接收循环。</summary>

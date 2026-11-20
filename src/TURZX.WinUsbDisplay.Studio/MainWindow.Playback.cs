@@ -9,7 +9,7 @@ namespace TURZX.WinUsbDisplay.Studio;
 public partial class MainWindow
 {
     /// <summary>记录单台设备的播放状态，以便切回该设备时恢复预览。</summary>
-    private sealed class DevicePlayback
+    internal sealed class DevicePlayback
     {
         /// <summary>正在播放的目标设备。</summary>
         internal required DisplayDevice Device { get; init; }
@@ -77,7 +77,7 @@ public partial class MainWindow
 
     // 每个设备路径只允许一个播放任务，切换所选设备后这一限制仍然有效。
     /// <summary>启动指定设备的播放，并在结束时恢复预览和释放资源。</summary>
-    private async Task RunPlaybackAsync(DisplayDevice device, Func<DevicePlayback, Task> operation, string progress,
+    internal async Task RunPlaybackAsync(DisplayDevice device, Func<DevicePlayback, Task> operation, string progress,
         bool resumeOnReconnect = false)
     {
         if (closing)
@@ -104,18 +104,20 @@ public partial class MainWindow
             active.Token.ThrowIfCancellationRequested();
             pendingResumes.Remove(device.Path);
         }
-        catch (Exception error) when (active.Cancellation.IsCancellationRequested
-            && (error is not PlaybackStopException || active.Disconnected))
-        {
-            SetPlaybackStatus(active, T(active.Disconnected && pendingResumes.ContainsKey(device.Path)
-                ? "DisplayDisconnectedWaitingToResume" : "OutputStopped"));
-        }
         catch (Exception error)
         {
-            if (pendingResumes.TryGetValue(device.Path, out var pending)
+            bool disconnected = IsDeviceDisconnected(error);
+            if (!disconnected && !active.Token.IsCancellationRequested && active.HasOutput && active.Resume is not null
+                && IsWinUsbTransferFailure(error))
+                disconnected = await ConfirmPlaybackDisconnectAsync(device.Path, active.Token);
+
+            if (active.Cancellation.IsCancellationRequested && (error is not PlaybackStopException || active.Disconnected))
+                SetPlaybackStatus(active, T(active.Disconnected && pendingResumes.ContainsKey(device.Path)
+                    ? "DisplayDisconnectedWaitingToResume" : "OutputStopped"));
+            else if (pendingResumes.TryGetValue(device.Path, out var pending)
                 && pending.Attempts < MaxResumeAttempts && IsTemporaryResumeFailure(error))
                 SetPlaybackStatus(active, T("DisplayDisconnectedWaitingToResume"));
-            else if (IsDeviceDisconnected(error) && QueuePlaybackResume(device, active))
+            else if (disconnected && QueuePlaybackResume(device, active))
                 deviceTimer.Start();
             else
             {
@@ -264,9 +266,38 @@ public partial class MainWindow
     private static bool IsDeviceDisconnected(Exception error) =>
         MatchesPlaybackFailure(error, static cause => cause is System.ComponentModel.Win32Exception { NativeErrorCode: 6 or 1167 });
 
+    /// <summary>WinUSB 在拔线时也可能返回通用错误 31，需用当前枚举结果确认。</summary>
+    private static bool IsWinUsbTransferFailure(Exception error) =>
+        MatchesPlaybackFailure(error, static cause =>
+            cause is System.ComponentModel.Win32Exception { NativeErrorCode: 31 } native
+            && (native.Message.StartsWith("WinUsb_ReadPipe:", StringComparison.Ordinal)
+                || native.Message.StartsWith("WinUsb_WritePipe:", StringComparison.Ordinal)));
+
+    private async Task<bool> ConfirmPlaybackDisconnectAsync(string path, CancellationToken cancellation)
+    {
+        try
+        {
+            // USB 传输失败后，设备接口可能要过片刻才从 Windows 枚举结果中消失。
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                if (attempt > 0)
+                    await Task.Delay(deviceTimer.Interval, cancellation);
+                var found = await Task.Run(discoverDisplays, cancellation);
+                if (!found.Any(device => string.Equals(device.Path, path, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+        }
+        catch (Exception error) when (error is OperationCanceledException or System.ComponentModel.Win32Exception
+            or FormatException)
+        {
+            // 枚举结果不可用时，继续保留原播放故障供界面诊断。
+        }
+        return false;
+    }
+
     /// <summary>判断续播故障是否属于可以重试的暂时错误。</summary>
     private static bool IsTemporaryResumeFailure(Exception error) =>
-        MatchesPlaybackFailure(error, static cause =>
+        IsWinUsbTransferFailure(error) || MatchesPlaybackFailure(error, static cause =>
             cause is System.ComponentModel.Win32Exception { NativeErrorCode: 2 or 3 or 6 or 21 or 32 or 121 or 1167 or 1460 }
                 or DeviceResponseException { Failure: DeviceResponseFailure.NoData });
 
