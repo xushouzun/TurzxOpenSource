@@ -21,13 +21,40 @@ public sealed record DisplayModel(string Name, ushort ProductId, int Width, int 
     [
         new("4.6 inch", 0x0046, 320, 960),
         new("8.8 inch", 0x0088, 480, 1920),
+        new("9.2 inch", 0x0092, 464, 1920),
+        new("9.2 inch A092", 0xa092, 464, 1920),
         new("2.1 inch", 0x0021, 480, 480),
         new("2.1 inch SLC", 0xb021, 480, 480),
         new("12.3 inch", 0x0123, 720, 1920),
         new("7 inch", 0x0070, 800, 1280),
         new("8 inch", 0x0080, 800, 1280),
         new("5.2 inch", 0x0050, 720, 1280),
-        new("5 inch", 0x0055, 720, 1280)
+        new("5 inch", 0x0055, 720, 1280),
+        new("4 inch", 0x0040, 720, 720),
+        new("4.5 inch", 0x0045, 1024, 768),
+        new("6.2 inch", 0xa062, 368, 960),
+        new("6.2 inch V2", 0xb062, 448, 1280),
+        // C062 的原厂主题画布为 448 × 1280，但送屏前会扩展到 480 × 1280。
+        new("6.2 inch V3", 0xc062, 480, 1280),
+        new("6.5 inch", 0xa065, 720, 1472),
+        new("6.5 inch 1568", 0xb065, 720, 1568),
+        new("6.8 inch", 0x0068, 1080, 2320),
+        new("6.8 inch 2288", 0xa068, 1080, 2288),
+        new("1.6 inch", 0x0005, 400, 400),
+        new("1.8 inch", 0xa018, 400, 400),
+        new("2.8 inch square", 0x0016, 400, 400),
+        new("2.8 inch round", 0x0028, 480, 480),
+        new("2.88 inch round", 0x0288, 480, 480),
+        new("2.1 inch A021", 0xa021, 480, 480),
+        new("3.4 inch round", 0x0034, 480, 480),
+        new("3.4 inch SLC", 0xb034, 480, 480),
+        new("3.5 inch", 0x0035, 640, 480),
+        new("3.92 inch", 0x0392, 1080, 1240),
+        new("10 inch", 0x0109, 1200, 1920),
+        new("11.3 inch", 0x0113, 440, 1920),
+        new("12.4 inch", 0x0124, 2560, 666),
+        new("12.68 inch", 0x0126, 1920, 140),
+        new("14.5 inch", 0x0145, 2560, 720)
     ]);
 }
 

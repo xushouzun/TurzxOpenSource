@@ -73,7 +73,7 @@ public partial class MainWindow
     /// <summary>指示一个设备控制操作仍在执行。</summary>
     private bool controlBusy;
     /// <summary>指示当前界面是否应禁止普通操作。</summary>
-    private bool busy => closing || controlBusy || CurrentPlayback is not null;
+    private bool busy => closing || controlBusy || nativeThemeBusy || CurrentPlayback is not null;
 
     // 每个设备路径只允许一个播放任务，切换所选设备后这一限制仍然有效。
     /// <summary>启动指定设备的播放，并在结束时恢复预览和释放资源。</summary>

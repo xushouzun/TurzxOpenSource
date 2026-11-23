@@ -181,7 +181,7 @@ public partial class MainWindow
                 // 0123 的实时 H.264 虽有应答，实屏仍出现局部马赛克；先统一使用 JPEG 路径。
                 if (mode is 0 or 1 && captureFps == 20 && background.Length == 0 && frameRotation == 0 && crop is null
                     && foreground is { ZoomPercent: 100, OffsetX: 0, OffsetY: 0 }
-                    && device.Model.ProductId is 0x0021 or 0x0046 or 0x0070
+                    && UsesBufferedForegroundVideo(device.Model, mode)
                     && await TryPlayBufferedForegroundAsync(active, source, mode == 1 ? window : null, key, rotation, captureFps))
                 {
                     active.Token.ThrowIfCancellationRequested();
@@ -645,7 +645,8 @@ public partial class MainWindow
                 var token = active.Token;
                 var device = active.Device;
                 var canvas = device.Model;
-                const double pixelScale = 0.5;
+                // 6.8 寸原生 1080 × 2320，0.75 缩放仍能在 20 FPS 下保留更多文字细节。
+                double pixelScale = BufferedForegroundPixelScale(device.Model);
                 const int bitrateKbps = 1200;
                 using var session = OpenPlaybackDevice(device, key, rotation, token, hasVideo: true);
                 using var timer = new PlaybackTimer();
@@ -710,6 +711,15 @@ public partial class MainWindow
             return false;
         }
     }
+
+    /// <summary>判断实时前景是否优先使用分块 H.264 输出。</summary>
+    internal static bool UsesBufferedForegroundVideo(DisplayModel model, int mode) =>
+        model.ProductId is 0x0021 or 0x0046 or 0x0070
+        || (model.ProductId == 0x0068 && mode == 0);
+
+    /// <summary>确定分块 H.264 路径的浏览器像素缩放。</summary>
+    internal static double BufferedForegroundPixelScale(DisplayModel model) =>
+        model.ProductId == 0x0068 ? 0.75 : 0.5;
 
     /// <summary>需要与背景合成时保留网页 Alpha，仅在不需要背景时采用 JPEG 捕捉。</summary>
     internal static bool CanCaptureHtmlAsJpeg(bool directJpeg, bool preferFastJpeg,

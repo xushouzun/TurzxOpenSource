@@ -8,6 +8,19 @@ namespace TURZX.WinUsbDisplay.Windows.Tests;
 public class DisplayFrameProcessorTests
 {
     [Fact]
+    public void SixPointEightHtmlUsesBufferedVideoAtHigherScale()
+    {
+        var sixEight = new DisplayModel("6.8", 0x0068, 1080, 2320);
+        Assert.True(TURZX.WinUsbDisplay.Studio.MainWindow.UsesBufferedForegroundVideo(sixEight, 0));
+        Assert.False(TURZX.WinUsbDisplay.Studio.MainWindow.UsesBufferedForegroundVideo(sixEight, 1));
+        Assert.Equal(0.75, TURZX.WinUsbDisplay.Studio.MainWindow.BufferedForegroundPixelScale(sixEight));
+
+        var seven = new DisplayModel("7", 0x0070, 800, 1280);
+        Assert.True(TURZX.WinUsbDisplay.Studio.MainWindow.UsesBufferedForegroundVideo(seven, 1));
+        Assert.Equal(0.5, TURZX.WinUsbDisplay.Studio.MainWindow.BufferedForegroundPixelScale(seven));
+    }
+
+    [Fact]
     public async Task FastHtmlCapturePreservesTheSelectedImageBackground() => await OnStaAsync(() =>
     {
         var model = new DisplayModel("7", 0x0070, 32, 32);

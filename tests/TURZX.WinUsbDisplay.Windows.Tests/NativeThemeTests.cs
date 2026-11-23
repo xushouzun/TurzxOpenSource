@@ -1,0 +1,166 @@
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Windows;
+using System.Windows.Threading;
+using TURZX.WinUsbDisplay.Studio;
+using TURZX.WinUsbDisplay.Studio.NativeTheme;
+using Xunit;
+
+namespace TURZX.WinUsbDisplay.Windows.Tests;
+
+/// <summary>验证 3.5 寸原生主题设备的映射、解析和预览。</summary>
+[Collection("StudioUi")]
+public class NativeThemeTests
+{
+    [Fact]
+    public void SelectingNativeThemeHidesWinUsbForegroundControls()
+    {
+        var native = new NativeThemeDevice("COM42", "USB35INCHIPSV2", "USB35INCHIPSV2");
+        using var directory = new TemporaryDirectory();
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new MainWindow(new StudioPreferences(directory.File("settings.json")),
+                    static () => [], () => [native]);
+                try
+                {
+                    RunOnDispatcher(window, async () =>
+                    {
+                        await window.RefreshDevicesAsync();
+                        for (int attempt = 0; attempt < 50 && window.NativeThemeImage.Source is null; attempt++)
+                            await Task.Delay(50);
+                    });
+                    Assert.Single(window.WorkspaceDevice.Items);
+                    Assert.Equal(Visibility.Visible, window.NativeThemeSettings.Visibility);
+                    Assert.Equal(Visibility.Collapsed, window.LiveSettings.Visibility);
+                    Assert.Equal(Visibility.Collapsed, window.LayoutBar.Visibility);
+                    Assert.NotNull(window.NativeThemeImage.Source);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            catch (Exception error)
+            {
+                failure = error;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "Native theme UI did not initialize.");
+        if (failure is not null)
+            throw failure;
+    }
+
+    private static void RunOnDispatcher(MainWindow window, Func<Task> check)
+    {
+        var dispatcher = window.Dispatcher;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+        var frame = new DispatcherFrame();
+        Task pending = check().WaitAsync(TimeSpan.FromSeconds(10));
+        _ = pending.ContinueWith(_ => dispatcher.BeginInvoke(new Action(() => frame.Continue = false)),
+            TaskScheduler.Default);
+        Dispatcher.PushFrame(frame);
+        pending.GetAwaiter().GetResult();
+    }
+
+    [Fact]
+    public void NativeThemePathMapsToThreePointFiveDisplay()
+    {
+        var device = new NativeThemeDevice("COM9", "USB35INCHIPSV2", "USB35INCHIPSV2");
+        var display = device.ToDisplayDevice();
+
+        Assert.Equal("serial:COM9", display.Path);
+        Assert.Equal("3.5 inch", display.Model.Name);
+        Assert.Equal(480, display.Model.Width);
+        Assert.Equal(320, display.Model.Height);
+
+        var parsed = NativeThemeDevice.FromPath(display.Path);
+        Assert.NotNull(parsed);
+        Assert.Equal("COM9", parsed.PortName);
+        Assert.Null(NativeThemeDevice.FromPath("\\\\?\\usb#vid_1cbe&pid_0068#test"));
+    }
+
+    [Fact]
+    public void BundledFactoryThemesRender()
+    {
+        string? directory = FindNativeThemeDirectory();
+        Assert.NotNull(directory);
+        string[] themes = Directory.GetFiles(directory, "*.data");
+        Assert.Equal(3, themes.Length);
+        foreach (string path in themes)
+        {
+            using NativeThemeDocument theme = NativeThemeDocument.Load(path);
+            using Bitmap frame = NativeThemeRenderer.Render(theme);
+            Assert.True(frame.Width > 0 && frame.Height > 0);
+            Assert.NotNull(NativeThemePreview.Render(path));
+            if (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_NATIVE_THEME_PREVIEW_DIR") is { Length: > 0 } output)
+            {
+                Directory.CreateDirectory(output);
+                frame.Save(Path.Combine(output, Path.GetFileNameWithoutExtension(path) + ".png"), ImageFormat.Png);
+            }
+        }
+    }
+
+    private static string? FindNativeThemeDirectory()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(directory.FullName, "src", "TURZX.WinUsbDisplay.Studio", "NativeThemes");
+            if (Directory.Exists(candidate))
+                return candidate;
+            directory = directory.Parent;
+        }
+        return null;
+    }
+
+    [Fact]
+    public void RejectsThemesForOtherCanvasSizes()
+    {
+        using var directory = new TemporaryDirectory();
+        using var background = new Bitmap(224, 64);
+        using var stream = new MemoryStream();
+        background.Save(stream, ImageFormat.Png);
+        string png = Convert.ToBase64String(stream.ToArray());
+        string path = directory.File("wrong-size.data");
+        File.WriteAllText(path, """
+            {"isLanscape":true,"deviceIndex":1,"backImg":{"png":"__PNG__"},
+             "groupList":[],"barList":[],"archList":[],"tipList":[]}
+            """.Replace("__PNG__", png));
+
+        Assert.Throws<InvalidDataException>(() => NativeThemeDocument.Load(path));
+    }
+
+    [Fact]
+    public void JsonThemeRendersAtNativeCanvas()
+    {
+        using var directory = new TemporaryDirectory();
+        using var background = new Bitmap(480, 320);
+        using var stream = new MemoryStream();
+        background.Save(stream, ImageFormat.Png);
+        string png = Convert.ToBase64String(stream.ToArray());
+        string path = directory.File("theme.data");
+        File.WriteAllText(path, """
+            {"isLanscape":true,"deviceIndex":1,"backImg":{"png":"__PNG__"},
+             "groupList":[{"enabled":true,"baseX":0,"baseY":0,"backImg":null,
+               "itemList":[{"enabled":true,"isLongStr":false,"itemName":"CpuLoad","strLen":2,
+                 "posX":10,"posY":20,"valueStr":"42",
+                 "fontType":{"size":20,"color":{"argb":-1},"offsetX":0,"offsetY":0,"interval":14,"W":14,"H":22}}]}],
+             "barList":[],"archList":[],"tipList":[]}
+            """.Replace("__PNG__", png));
+
+        using NativeThemeDocument theme = NativeThemeDocument.Load(path);
+        Assert.True(theme.IsLandscape);
+        Assert.Single(theme.Groups);
+        Assert.Equal("42", theme.Groups[0].Items[0].Value);
+
+        using Bitmap frame = NativeThemeRenderer.Render(theme);
+        Assert.Equal(480, frame.Width);
+        Assert.Equal(320, frame.Height);
+    }
+}

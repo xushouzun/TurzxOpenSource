@@ -178,6 +178,8 @@
                             MouseLeftButtonUp="OnPreviewDragEnd" LostMouseCapture="OnPreviewDragLost">
                         <Grid Margin="9">
                             <local:PreviewCanvas x:Name="HomeCanvas" />
+                            <Image x:Name="NativeThemeImage" Stretch="Uniform" Visibility="Collapsed"
+                                   IsHitTestVisible="False" />
                         </Grid>
                     </Border>
                     <WrapPanel x:Name="LayoutBar" Grid.Row="1" HorizontalAlignment="Center">
@@ -339,6 +341,17 @@
                                 </StackPanel>
                                 <TextBlock x:Name="BackgroundFrameRateSummary" Style="{StaticResource Muted}" Margin="0,4,0,0"
                                            Visibility="Collapsed" ToolTip="{DynamicResource L.BackgroundRateLimitHint}" />
+                            </StackPanel>
+                            <StackPanel x:Name="NativeThemeSettings" Visibility="Collapsed">
+                                <TextBlock Text="{DynamicResource L.NativeTheme}" FontWeight="SemiBold" />
+                                <DockPanel Margin="0,5,0,0">
+                                    <Button DockPanel.Dock="Right" Content="{DynamicResource L.Browse}"
+                                            Click="OnBrowseNativeTheme" Margin="8,0,0,0" />
+                                    <TextBox x:Name="NativeThemePath" IsReadOnly="True"
+                                             AutomationProperties.Name="{DynamicResource L.NativeTheme}" />
+                                </DockPanel>
+                                <TextBlock Text="{DynamicResource L.NativeThemeHint}" Style="{StaticResource Muted}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0" />
                             </StackPanel>
                             <Border Background="#27344C" CornerRadius="8" Padding="8,4" Margin="0,7,0,0">
                                 <Grid>

@@ -9,6 +9,7 @@ using Xunit;
 
 namespace TURZX.WinUsbDisplay.Windows.Tests;
 
+[Collection("StudioUi")]
 public class CommandPageSelectionTests
 {
     [Fact]

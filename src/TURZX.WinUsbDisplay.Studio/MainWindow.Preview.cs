@@ -479,7 +479,7 @@ public partial class MainWindow
     private void UpdatePreviewDevice()
     {
         string? path = SelectedDeviceChoice?.Device.Path;
-        bool connected = SelectedDevice is not null;
+        bool connected = SelectedDeviceChoice is { Connected: true };
         if (homePreviewDevicePath != path || homePreviewDeviceConnected != connected)
         {
             homePreviewDevicePath = path;

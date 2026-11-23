@@ -41,6 +41,17 @@ public partial class MainWindow
         if (OutputHint is null || Send is null)
             return;
 
+        if (SelectedNativeTheme is not null)
+        {
+            bool ready = File.Exists(NativeThemePath.Text.Trim());
+            Send.IsEnabled = !busy && !selectingCaptureRegion && ready && !nativeThemePlaying;
+            if (Stop is not null)
+                Stop.IsEnabled = !closing && nativeThemePlaying;
+            OutputHint.Text = ready ? string.Empty : T("SelectNativeTheme");
+            OutputHint.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
+            return;
+        }
+
         int mode = LiveSource.SelectedIndex;
         string background = BackgroundPath.Text.Trim();
         bool hasBackground = background.Length > 0;

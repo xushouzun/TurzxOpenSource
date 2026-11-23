@@ -51,6 +51,16 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, byte> pendingBrightness = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>最近一次应用到窗口的已连接设备快照。</summary>
     private DisplayDevice[] devices = [];
+    /// <summary>枚举原项目 3.5 寸原生主题串口设备。</summary>
+    private readonly Func<NativeThemeDevice[]> discoverNativeThemes;
+    /// <summary>调用原项目播放 3.5 寸原生主题。</summary>
+    private readonly NativeThemePlayer nativeThemePlayer = new();
+    /// <summary>指示原生主题播放是否由本窗口启动。</summary>
+    private bool nativeThemePlaying;
+    /// <summary>指示正在启动或停止原生主题播放。</summary>
+    private bool nativeThemeBusy;
+    /// <summary>取消正在进行中的原生主题预览渲染。</summary>
+    private CancellationTokenSource? nativePreviewCancellation;
     /// <summary>优先恢复选择的设备接口路径。</summary>
     private string? preferredDevicePath;
     /// <summary>为设备枚举和待重连续播安排后续检查。</summary>
@@ -61,11 +71,14 @@ public partial class MainWindow : Window
     public MainWindow() : this(StudioPreferences.Load()) { }
 
     /// <summary>使用指定的持久化设置初始化主窗口。</summary>
-    internal MainWindow(StudioPreferences preferences, Func<DisplayDevice[]>? discoverDisplays = null)
+    internal MainWindow(StudioPreferences preferences, Func<DisplayDevice[]>? discoverDisplays = null,
+        Func<NativeThemeDevice[]>? discoverNativeThemes = null)
     {
         this.preferences = preferences;
         this.discoverDisplays = discoverDisplays ??
             (static () => DisplayDevice.Discover(DisplaySettings.InterfaceGuid).ToArray());
+        this.discoverNativeThemes = discoverNativeThemes
+            ?? new Func<NativeThemeDevice[]>(static () => NativeThemeDevice.Discover().ToArray());
         StudioLanguage.Set(preferences.Language);
         InitializeComponent();
         LanguageSelector.ItemsSource = StudioLanguage.Options;
@@ -107,6 +120,10 @@ public partial class MainWindow : Window
     {
         /// <summary>选项代表的设备及型号信息。</summary>
         public DisplayDevice Device { get; } = device;
+        /// <summary>3.5 寸原生主题设备信息；普通 WinUSB 屏幕为空。</summary>
+        public NativeThemeDevice? NativeTheme { get; } = NativeThemeDevice.FromPath(device.Path);
+        /// <summary>指示列表项是否为 3.5 寸原生主题设备。</summary>
+        public bool IsNativeTheme => NativeTheme is not null;
         /// <summary>指示对应设备接口当前是否在线。</summary>
         public bool Connected { get; } = Connected;
         /// <summary>设备选项的绑定属性发生变化时触发。</summary>
@@ -129,6 +146,9 @@ public partial class MainWindow : Window
         {
             get
             {
+                if (NativeTheme is { } native)
+                    return $"{Device.Model.Name} · {native.PortName}";
+
                 string productId = $"{Device.Model.ProductId:X4}";
                 string name = Device.Model.Name;
                 string suffix = $" ({productId})";
@@ -158,8 +178,10 @@ public partial class MainWindow : Window
             }
         }
         /// <summary>获取用于区分设备的补充详情。</summary>
-        public string Details => $"{Device.Model.Width} × {Device.Model.Height}   ·   VID {DisplayModel.VendorId:X4}   ·   PID {Device.Model.ProductId:X4}"
-            + (InstanceSuffix is { } suffix ? $"   ·   {suffix}" : "");
+        public string Details => NativeTheme is { } native
+            ? $"{Device.Model.Width} × {Device.Model.Height}   ·   USB35INCH   ·   {native.PortName}"
+            : $"{Device.Model.Width} × {Device.Model.Height}   ·   VID {DisplayModel.VendorId:X4}   ·   PID {Device.Model.ProductId:X4}"
+                + (InstanceSuffix is { } suffix ? $"   ·   {suffix}" : "");
     }
 
     /// <summary>安装窗口消息钩子，接收设备变化通知。</summary>
@@ -203,10 +225,19 @@ public partial class MainWindow : Window
         try
         {
             var found = await Task.Run(discoverDisplays);
+            var native = await Task.Run(discoverNativeThemes);
+            var all = found.Concat(native.Select(device => device.ToDisplayDevice())).ToArray();
             if (closing)
                 return;
+            if (nativeThemePlaying && SelectedDeviceChoice is { IsNativeTheme: true } selectedNative
+                && all.All(device => !string.Equals(device.Path, selectedNative.Device.Path, StringComparison.OrdinalIgnoreCase)))
+            {
+                nativeThemePlayer.Stop();
+                nativeThemePlaying = false;
+                Status.Text = T("NativeThemeStopped");
+            }
             // 先处理断开并登记续播，再用枚举结果重建设备列表。
-            CancelDisconnectedPlaybacks(found);
+            CancelDisconnectedPlaybacks(all);
 
             if (controlBusy)
             {
@@ -214,8 +245,8 @@ public partial class MainWindow : Window
                 return;
             }
 
-            ApplyDeviceSnapshot(found);
-            ResumeConnectedPlaybacks(found);
+            ApplyDeviceSnapshot(all);
+            ResumeConnectedPlaybacks(all);
         }
         catch (Exception ex)
         {
@@ -237,7 +268,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        bool wasSelected = SelectedDevice is not null;
+        bool wasSelected = SelectedDeviceChoice is { Connected: true };
         string? preferred = selectDevicePath ?? preferredDevicePath;
         devices = found;
         // 等待重连续播的设备保留在列表中，并标记为已断开。
@@ -261,7 +292,7 @@ public partial class MainWindow : Window
         if (CurrentPlayback is not null)
             return;
 
-        if (preferred is not null && SelectedDevice is null)
+        if (preferred is not null && SelectedDeviceChoice is not { Connected: true })
         {
             quickControlDevicePath = null;
             Status.Text = T(HasPendingResume ? "DisplayDisconnectedWaitingToResume" : "WaitingForTheSelectedDisplayToReconnect");
@@ -280,8 +311,12 @@ public partial class MainWindow : Window
 
     /// <summary>返回当前选择的设备列表项，包括断开的项。</summary>
     private DeviceChoice? SelectedDeviceChoice => WorkspaceDevice.SelectedItem as DeviceChoice;
-    /// <summary>返回当前选择且仍在线的设备。</summary>
-    private DisplayDevice? SelectedDevice => SelectedDeviceChoice is { Connected: true } choice ? choice.Device : null;
+    /// <summary>返回当前选择且仍在线的 WinUSB 设备。</summary>
+    private DisplayDevice? SelectedDevice => SelectedDeviceChoice is { Connected: true, IsNativeTheme: false } choice
+        ? choice.Device : null;
+    /// <summary>返回当前选择且仍在线的 3.5 寸原生主题设备。</summary>
+    private NativeThemeDevice? SelectedNativeTheme => SelectedDeviceChoice is { Connected: true, IsNativeTheme: true } choice
+        ? choice.NativeTheme : null;
 
     /// <summary>在设备切换后同步媒体、控制面板和预览。</summary>
     private void OnDeviceChanged(object sender, SelectionChangedEventArgs e)
@@ -290,6 +325,13 @@ public partial class MainWindow : Window
             return;
 
         UpdateSelectedDevice();
+        if (SelectedNativeTheme is not null)
+        {
+            Status.Text = nativeThemePlaying
+                ? T("NativeThemePlaying", Path.GetFileNameWithoutExtension(NativeThemePath.Text))
+                : T("NativeThemeHint");
+            return;
+        }
         if (CurrentPlayback is null)
         {
             Status.Text = HasPendingResume ? T("WaitingToReconnect")
@@ -316,16 +358,94 @@ public partial class MainWindow : Window
         }
 
 
-        if (SelectedDeviceChoice is { Device: var device })
+        if (SelectedDeviceChoice is { Device: var device } choice)
         {
-            SwitchDeviceMedia(device.Path);
             preferredDevicePath = device.Path;
+            if (choice.IsNativeTheme)
+            {
+                SetNativeThemeMode(true);
+            }
+            else
+            {
+                SetNativeThemeMode(false);
+                SwitchDeviceMedia(device.Path);
+            }
+        }
+        else
+        {
+            SetNativeThemeMode(false);
         }
         UpdateDeviceSummary();
         UpdateQuickControls();
         UpdatePreviewDevice();
         UpdateControls();
         UpdatePlaybackIndicators();
+    }
+
+    /// <summary>切换 3.5 寸原生主题与普通 WinUSB 前景面板。</summary>
+    private void SetNativeThemeMode(bool enabled)
+    {
+        if (!enabled && nativeThemePlaying)
+        {
+            nativeThemePlayer.Stop();
+            nativeThemePlaying = false;
+        }
+        LiveSettings.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        NativeThemeSettings.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        LayoutBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        HomeCanvas.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        if (!enabled)
+        {
+            nativePreviewCancellation?.Cancel();
+            NativeThemeImage.Source = null;
+            NativeThemeImage.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            if (NativeThemePath.Text.Length == 0)
+                NativeThemePath.Text = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault() ?? "";
+            _ = UpdateNativeThemePreviewAsync();
+            Status.Text = T("NativeThemeHint");
+        }
+    }
+
+    /// <summary>渲染所选原生主题并显示在预览区。</summary>
+    private async Task UpdateNativeThemePreviewAsync()
+    {
+        nativePreviewCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        nativePreviewCancellation = cancellation;
+        string theme = NativeThemePath.Text.Trim();
+        if (SelectedNativeTheme is null || !File.Exists(theme))
+        {
+            NativeThemeImage.Source = null;
+            NativeThemeImage.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            var image = await Task.Run(() => NativeThemePreview.Render(theme), cancellation.Token);
+            if (cancellation.IsCancellationRequested || SelectedNativeTheme is null)
+                return;
+            NativeThemeImage.Source = image;
+            NativeThemeImage.Visibility = Visibility.Visible;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or ArgumentException)
+        {
+            NativeThemeImage.Source = null;
+            NativeThemeImage.Visibility = Visibility.Collapsed;
+            Status.Text = T("NativeThemeStartFailed", DescribeUiError(error));
+        }
+        finally
+        {
+            if (ReferenceEquals(nativePreviewCancellation, cancellation))
+                nativePreviewCancellation = null;
+            cancellation.Dispose();
+        }
     }
 
     /// <summary>根据所选设备刷新亮度和旋转快捷操作。</summary>
@@ -360,7 +480,7 @@ public partial class MainWindow : Window
     private void UpdateDeviceSummary()
     {
         string summary = devices.Length == 0 ? T("ConnectDisplayHint")
-            : SelectedDevice is null ? T("ConnectedSelectADisplay", devices.Length)
+            : SelectedDeviceChoice is not { Connected: true } ? T("ConnectedSelectADisplay", devices.Length)
             : T("ConnectedAutoRefresh", devices.Length);
         WorkspaceDevice.ToolTip = WorkspaceDevice.SelectedItem is DeviceChoice choice
             ? $"{choice.Details}\n{summary}" : summary;
@@ -484,7 +604,14 @@ public partial class MainWindow : Window
     private async void OnSend(object sender, RoutedEventArgs e)
     {
         UpdateMediaControls();
-        if (busy || !Send.IsEnabled || SelectedDevice is not { } device)
+        if (busy)
+            return;
+        if (SelectedNativeTheme is { } nativeTheme)
+        {
+            await StartNativeThemeAsync(nativeTheme);
+            return;
+        }
+        if (!Send.IsEnabled || SelectedDevice is not { } device)
             return;
 
         pendingResumes.Remove(device.Path);
@@ -555,6 +682,60 @@ public partial class MainWindow : Window
                 CryptographicOperations.ZeroMemory(key);
             }
         }, backgroundVideo ? T("PreparingVideo") : T("PreparingImage"), resumeOnReconnect: true);
+    }
+
+    /// <summary>选择任意位置的原生主题 JSON 文件。</summary>
+    private void OnBrowseNativeTheme(object sender, RoutedEventArgs e)
+    {
+        string? initial = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault();
+        var picker = new OpenFileDialog
+        {
+            Filter = $"{T("NativeTheme")} (*.data)|*.data",
+            InitialDirectory = initial is null ? "" : Path.GetDirectoryName(initial)!,
+            CheckFileExists = true
+        };
+        if (picker.ShowDialog(this) != true)
+            return;
+        NativeThemePath.Text = picker.FileName;
+        _ = UpdateNativeThemePreviewAsync();
+        UpdateMediaControls();
+    }
+
+    /// <summary>调用原项目播放 3.5 寸原生主题。</summary>
+    private async Task StartNativeThemeAsync(NativeThemeDevice nativeTheme)
+    {
+        string theme = NativeThemePath.Text.Trim();
+        if (!File.Exists(theme))
+        {
+            Status.Text = T("SelectNativeTheme");
+            return;
+        }
+
+        nativeThemeBusy = true;
+        UpdateControls();
+        Status.Text = T("SendingLiveOutput");
+        try
+        {
+            await nativeThemePlayer.StartAsync(nativeTheme, theme, deviceControlShutdown.Token);
+            nativeThemePlaying = true;
+            SelectedDeviceChoice?.SetPlaybackLabel(T("Playing"));
+            Status.Text = T("NativeThemePlaying", Path.GetFileNameWithoutExtension(theme));
+        }
+        catch (NativeThemePlayerException error)
+        {
+            Status.Text = T(error.StatusKey);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+            or InvalidDataException or System.ComponentModel.Win32Exception)
+        {
+            Status.Text = T("NativeThemeStartFailed", DescribeUiError(error));
+        }
+        finally
+        {
+            nativeThemeBusy = false;
+            UpdateControls();
+            UpdateMediaControls();
+        }
     }
 
     /// <summary>显示或清除当前视频启动阶段提示。</summary>
@@ -681,6 +862,25 @@ public partial class MainWindow : Window
             Status.Text = T("ResumeOnReconnectionCanceled");
             UpdateControls();
         }
+        if (SelectedNativeTheme is not null && nativeThemePlaying)
+        {
+            nativeThemeBusy = true;
+            UpdateControls();
+            try
+            {
+                nativeThemePlayer.Stop();
+                nativeThemePlaying = false;
+                SelectedDeviceChoice?.SetPlaybackLabel(T("Idle"));
+                Status.Text = T("NativeThemeStopped");
+            }
+            finally
+            {
+                nativeThemeBusy = false;
+                UpdateControls();
+                UpdateMediaControls();
+            }
+            return;
+        }
         if (CurrentPlayback is { } active)
         {
             if (active.Cancellation.IsCancellationRequested)
@@ -732,7 +932,8 @@ public partial class MainWindow : Window
         ProtocolPage.Visibility = DocsNav.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 
         if (IsLoaded && !busy && MediaNav.IsChecked == true)
-            Status.Text = SelectedDevice is { } device ? T("OutputTargetDetails", device.Model.Name)
+            Status.Text = SelectedDeviceChoice is { Device: var selected }
+                ? T("OutputTargetDetails", selected.Model.Name)
                 : devices.Length == 0 ? T("ConnectDisplayHint") : T("ConnectedSelectADisplay", devices.Length);
 
         if (DocsNav.IsChecked == true && renderedMarkdown.Length == 0)
@@ -1041,6 +1242,8 @@ public partial class MainWindow : Window
         UpdateCommandControls();
         bool canControl = !busy && SelectedDevice is not null;
         LanguageSelector.IsEnabled = !closing && !controlBusy;
+        LiveSettings.IsEnabled = !busy && SelectedNativeTheme is null;
+        NativeThemeSettings.IsEnabled = !busy;
         BrightnessValue.IsEnabled = Rotation.IsEnabled = canControl;
         UpdateAdvancedControls();
     }
@@ -1104,6 +1307,8 @@ public partial class MainWindow : Window
             quickControlTimer.Stop();
             confirmation?.TrySetResult(false);
             deviceControlShutdown.Cancel();
+            nativeThemePlayer.Stop();
+            nativeThemePlaying = false;
             StopLocalPreview();
             backgroundFrameRateProbe?.Cancel();
             foreach (var active in devicePlaybacks.Values.ToArray())

@@ -24,13 +24,32 @@ Looping GIF previews are rendered at the 2.1-inch round display’s 480 × 480 r
 
 | Display | USB VID:PID | Default output size |
 | --- | --- | --- |
-| 4.6 inch | `1CBE:0046` | 320 × 960 |
 | 2.1-inch round | `1CBE:0021` | 480 × 480 |
-| 12.3 inch | `1CBE:0123` | 720 × 1920 |
-| 7 inch | `1CBE:0070` | 800 × 1280 |
+| 2.1-inch round SLC | `1CBE:B021` | 480 × 480 |
+| 4 inch | `1CBE:0040` | 720 × 720 |
+| 4.5 inch | `1CBE:0045` | 1024 × 768 |
+| 4.6 inch | `1CBE:0046` | 320 × 960 |
 | 5 inch | `1CBE:0055` | 720 × 1280 |
+| 5.2 inch | `1CBE:0050` | 720 × 1280 |
+| 6.2 inch | `1CBE:A062` | 368 × 960 |
+| 6.2 inch V2 | `1CBE:B062` | 448 × 1280 |
+| 6.2 inch V3 | `1CBE:C062` | 480 × 1280 |
+| 6.5 inch | `1CBE:A065` | 720 × 1472 |
+| 6.5 inch 1568 | `1CBE:B065` | 720 × 1568 |
+| 6.8 inch | `1CBE:0068` | 1080 × 2320 |
+| 6.8 inch 2288 | `1CBE:A068` | 1080 × 2288 |
+| 7 inch | `1CBE:0070` | 800 × 1280 |
+| 8 inch | `1CBE:0080` | 800 × 1280 |
+| 8.8 inch | `1CBE:0088` | 480 × 1920 |
+| 9.2 inch | `1CBE:0092` | 464 × 1920 |
+| 9.2 inch A092 | `1CBE:A092` | 464 × 1920 |
+| 12.3 inch | `1CBE:0123` | 720 × 1920 |
 
-See the [compatibility records](docs/compatibility.md) for model-specific settings. Older WCH, CDC and HID display protocols are out of scope.
+The table above lists common models. All 35 Win207 PIDs (including 1.6/1.8/2.8/2.88/3.4/3.5/3.92/10/11.3/12.4/12.68/14.5-inch variants) are listed in the [compatibility records](docs/compatibility.md#支持的-win207-型号--supported-win207-models).
+
+The 3.5-inch native-theme display uses a `1A86:5722` CH340 serial interface and is not part of the WinUSB table above. Studio shows only the native theme source, renders JSON `.data` locally and sends the frame over serial. Three IP-neutral factory themes are bundled. See the [compatibility records](docs/compatibility.md#原生主题设备--native-theme-devices).
+
+See the [compatibility records](docs/compatibility.md) for model variants, orientation and command differences. Older WCH, CDC and HID display protocols are out of scope, as are the 6.2-inch legacy WinLcd model `1CBE:0062` and the legacy 4-inch `1D6B:A040`.
 
 ## Running
 
