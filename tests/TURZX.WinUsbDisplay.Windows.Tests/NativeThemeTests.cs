@@ -37,6 +37,8 @@ public class NativeThemeTests
                     Assert.Equal(Visibility.Collapsed, window.LiveSettings.Visibility);
                     Assert.Equal(Visibility.Collapsed, window.LayoutBar.Visibility);
                     Assert.NotNull(window.NativeThemeImage.Source);
+                    Assert.Equal(Visibility.Collapsed, window.Rotation90.Visibility);
+                    Assert.Equal(Visibility.Collapsed, window.Rotation270.Visibility);
                 }
                 finally
                 {

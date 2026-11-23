@@ -65,7 +65,7 @@ The 3.5-inch display is not a WinUSB/Win207 device. It receives RGB565 images ov
 - Three neutral factory themes ship with Studio: `默认主题-深蓝`, `默认主题-深空` and `默认主题-灰岩`. They use neutral 480 × 320 backgrounds and contain no third-party brand, anime or game artwork.
 - The factory themes are built from neutral 480 × 320 backgrounds in `35inchNEW\3.5`. Some `.data` themes under that package's `config` folder use a 224 × 64 canvas and are not valid for the 3.5-inch display; Studio rejects themes whose canvas does not match.
 - The integrated renderer reads JSON `.data` themes. Legacy binary `.data` files must be converted to JSON first.
-- The native theme panel provides brightness and an invert toggle. Changes are sent immediately while playing; changing orientation resends the full frame.
+- Brightness and orientation use the shared controls below the preview. This display supports only 0° and 180°. Changes are sent immediately while playing; changing orientation resends the full frame.
 - The startup sequence follows the original project: connection probe, wake, mirror, orientation, brightness, full image.
 - Mirror and orientation use the original project's fixed 16-byte control packet (6-byte header + 10-byte data) written in one call. Splitting it into a 6-byte header plus a 16-byte payload desynchronizes the firmware, so later brightness and image updates do not take effect.
 - Preview and output use the sample values stored in the theme. Live hardware sensor data is not wired in yet.

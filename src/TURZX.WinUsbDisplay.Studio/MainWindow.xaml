@@ -350,21 +350,6 @@
                                     <TextBox x:Name="NativeThemePath" IsReadOnly="True"
                                              AutomationProperties.Name="{DynamicResource L.NativeTheme}" />
                                 </DockPanel>
-                                <TextBlock Text="{DynamicResource L.NativeThemeHint}" Style="{StaticResource Muted}"
-                                           TextWrapping="Wrap" Margin="0,6,0,0" />
-                                <TextBlock Text="{DynamicResource L.Brightness}" FontWeight="SemiBold" Margin="0,10,0,0" />
-                                <DockPanel Margin="0,4,0,0">
-                                    <TextBlock DockPanel.Dock="Right" Width="38" Margin="8,0,0,0" TextAlignment="Right"
-                                               VerticalAlignment="Center"
-                                               Text="{Binding Value, ElementName=NativeBrightness, StringFormat={}{0:0}%}" />
-                                    <Slider x:Name="NativeBrightness" Minimum="0" Maximum="100" Value="66"
-                                            TickFrequency="1" IsSnapToTickEnabled="True" LargeChange="10" SmallChange="1"
-                                            ValueChanged="OnNativeBrightnessChanged"
-                                            AutomationProperties.Name="{DynamicResource L.BrightnessPercentage}" />
-                                </DockPanel>
-                                <CheckBox x:Name="NativeInvert" Content="{DynamicResource L.NativeInvert}"
-                                          Margin="0,8,0,0" Checked="OnNativeOrientationChanged"
-                                          Unchecked="OnNativeOrientationChanged" />
                             </StackPanel>
                             <Border Background="#27344C" CornerRadius="8" Padding="8,4" Margin="0,7,0,0">
                                 <Grid>
@@ -390,9 +375,9 @@
                                               SelectionChanged="OnRotationChanged"
                                               ToolTip="{DynamicResource L.PlaybackOrientationHint}" AutomationProperties.Name="{DynamicResource L.ScreenOrientation}">
                                         <ComboBoxItem Content="0°" />
-                                        <ComboBoxItem Content="90°" />
+                                        <ComboBoxItem x:Name="Rotation90" Content="90°" />
                                         <ComboBoxItem Content="180°" />
-                                        <ComboBoxItem Content="270°" />
+                                        <ComboBoxItem x:Name="Rotation270" Content="270°" />
                                     </ComboBox>
                                 </Grid>
                             </Border>

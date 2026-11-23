@@ -394,6 +394,11 @@ public partial class MainWindow : Window
         NativeThemeSettings.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         LayoutBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         HomeCanvas.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        // 3.5 寸原生主题只有正向和反向两种方向，隐藏 90° 和 270°。
+        Rotation90.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        Rotation270.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        if (enabled && Rotation.SelectedIndex is 1 or 3)
+            Rotation.SelectedIndex = 0;
         if (!enabled)
         {
             nativePreviewCancellation?.Cancel();
@@ -684,21 +689,6 @@ public partial class MainWindow : Window
         }, backgroundVideo ? T("PreparingVideo") : T("PreparingImage"), resumeOnReconnect: true);
     }
 
-    /// <summary>原生主题亮度变化时下发到串口。</summary>
-    private void OnNativeBrightnessChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (NativeBrightness is null)
-            return;
-        nativeThemePlayer.SetBrightness((byte)Math.Round(e.NewValue * 255 / 100));
-    }
-
-    /// <summary>原生主题方向变化时下发到串口。</summary>
-    private void OnNativeOrientationChanged(object sender, RoutedEventArgs e)
-    {
-        if (NativeInvert is not null)
-            nativeThemePlayer.SetInvert(NativeInvert.IsChecked == true);
-    }
-
     /// <summary>选择任意位置的原生主题 JSON 文件。</summary>
     private void OnBrowseNativeTheme(object sender, RoutedEventArgs e)    {
         string? initial = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault();
@@ -730,8 +720,8 @@ public partial class MainWindow : Window
         Status.Text = T("SendingLiveOutput");
         try
         {
-            byte brightness = (byte)Math.Round(NativeBrightness.Value * 255 / 100);
-            await nativeThemePlayer.StartAsync(nativeTheme, theme, brightness, NativeInvert.IsChecked == true,
+            byte brightness = (byte)Math.Round(BrightnessValue.Value * 255 / 100);
+            await nativeThemePlayer.StartAsync(nativeTheme, theme, brightness, Rotation.SelectedIndex == 2,
                 deviceControlShutdown.Token);
             nativeThemePlaying = true;
             SelectedDeviceChoice?.SetPlaybackLabel(T("Playing"));
@@ -961,6 +951,8 @@ public partial class MainWindow : Window
     /// <summary>亮度滑块变化时保存并安排发送最新值。</summary>
     private void OnBrightnessChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        if (SelectedNativeTheme is not null)
+            nativeThemePlayer.SetBrightness((byte)Math.Round(e.NewValue * 255 / 100));
         if (!loadingQuickControls)
             SaveQuickControl(brightness: (byte)e.NewValue);
     }
@@ -969,6 +961,8 @@ public partial class MainWindow : Window
     private void OnRotationChanged(object sender, SelectionChangedEventArgs e)
     {
         ApplyRotationToTargets();
+        if (SelectedNativeTheme is not null)
+            nativeThemePlayer.SetInvert(Rotation.SelectedIndex == 2);
         if (!loadingQuickControls && Rotation.SelectedIndex >= 0)
             SaveQuickControl(rotation: (byte)Rotation.SelectedIndex);
     }
