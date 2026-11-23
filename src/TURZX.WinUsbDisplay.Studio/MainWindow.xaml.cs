@@ -970,7 +970,7 @@ public partial class MainWindow : Window
     /// <summary>把快捷设置的变更写入当前设备的首选项。</summary>
     private void SaveQuickControl(byte? brightness = null, byte? rotation = null)
     {
-        if (busy || SelectedDevice is not { } device)
+        if (busy || SelectedDeviceChoice is not { Device: var device })
             return;
 
         var previous = preferences.GetScreen(device.Path);
@@ -1250,7 +1250,7 @@ public partial class MainWindow : Window
         WorkspaceDevice.IsEnabled = !closing && !controlBusy;
         LiveSettings.IsEnabled = !busy;
         UpdateCommandControls();
-        bool canControl = !busy && SelectedDevice is not null;
+        bool canControl = !busy && (SelectedDevice is not null || SelectedNativeTheme is not null);
         LanguageSelector.IsEnabled = !closing && !controlBusy;
         LiveSettings.IsEnabled = !busy && SelectedNativeTheme is null;
         NativeThemeSettings.IsEnabled = !busy;
