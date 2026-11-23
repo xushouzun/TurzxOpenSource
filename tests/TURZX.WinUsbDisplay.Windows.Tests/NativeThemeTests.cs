@@ -158,6 +158,15 @@ public class NativeThemeTests
     }
 
     [Fact]
+    public void BrightnessRegisterUsesInvertedValue()
+    {
+        // 原项目寄存器 110 越大越暗：0 最亮，255 最暗。
+        Assert.Equal((byte)255, NativeThemeSerialSession.BrightnessRegisterValue(0));
+        Assert.Equal((byte)87, NativeThemeSerialSession.BrightnessRegisterValue(168));
+        Assert.Equal((byte)0, NativeThemeSerialSession.BrightnessRegisterValue(255));
+    }
+
+    [Fact]
     public void Rgb565UsesLittleEndian()
     {
         using var bitmap = new Bitmap(1, 1);

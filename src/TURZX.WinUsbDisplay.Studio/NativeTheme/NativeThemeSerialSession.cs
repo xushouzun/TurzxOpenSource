@@ -57,7 +57,11 @@ internal sealed class NativeThemeSerialSession : IDisposable
     }
 
     /// <summary>设置背光亮度，取值 0–255。</summary>
-    internal void SetBrightness(byte brightness) => SendRegister(110, brightness, 0, 0, 0);
+    /// <summary>设置背光亮度。寄存器 110 的值越大越暗，这里把亮度刻度换算为反相的寄存器值。</summary>
+    internal void SetBrightness(byte brightness) => SendRegister(110, BrightnessRegisterValue(brightness), 0, 0, 0);
+
+    /// <summary>把 0（最暗）到 255（最亮）的亮度刻度换算为寄存器 110 的暗度值。</summary>
+    internal static byte BrightnessRegisterValue(byte brightness) => (byte)(255 - brightness);
 
     /// <summary>发送完整 RGB565 画面。</summary>
     internal void SendFrame(Bitmap bitmap)

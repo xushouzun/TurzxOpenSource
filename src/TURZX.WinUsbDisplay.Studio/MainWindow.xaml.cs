@@ -996,6 +996,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 原生主题的亮度已直接下发串口，不再进入 WinUSB 发送队列。
+        if (SelectedNativeTheme is not null)
+            return;
+
         if (previous.Brightness == current.Brightness)
         {
             Status.Text = T("OrientationSaved");
