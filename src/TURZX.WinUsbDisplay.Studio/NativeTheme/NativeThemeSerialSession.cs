@@ -8,6 +8,7 @@ namespace TURZX.WinUsbDisplay.Studio.NativeTheme;
 internal sealed class NativeThemeSerialSession : IDisposable
 {
     private readonly SerialPort port;
+    private readonly object writeGate = new();
 
     /// <summary>打开指定 COM 口。</summary>
     internal NativeThemeSerialSession(string portName)
@@ -23,25 +24,80 @@ internal sealed class NativeThemeSerialSession : IDisposable
         port.Open();
     }
 
-    /// <summary>唤醒屏幕并设置亮度。</summary>
-    internal void Wake(byte brightness = 255)
+    /// <summary>发送连接探测命令，原项目在开始播放前会先发送该命令。</summary>
+    internal void TestConnection() => SendRegister(255, 0, 0, 0, 0);
+
+    /// <summary>唤醒屏幕，不改变亮度。</summary>
+    internal void Wake()
     {
         SendRegister(110, 0, 0, 0, 0);
         SendRegister(109, 0, 0, 0, 0);
-        SendRegister(110, brightness, 0, 0, 0);
     }
+
+    /// <summary>设置镜像模式，0 为正常显示。</summary>
+    internal void SetMirrorMode(int mode)
+    {
+        var data = new byte[16];
+        data[6] = (byte)mode;
+        SendRegister(122, 0, 0, 0, 0, data);
+    }
+
+    /// <summary>设置固件旋转方向，并告知输出宽高。</summary>
+    internal void SetRotation(int type, int width, int height)
+    {
+        if ((uint)type > 3)
+            throw new ArgumentOutOfRangeException(nameof(type));
+        var data = new byte[16];
+        data[6] = (byte)(type + 100);
+        data[7] = (byte)(width >> 8);
+        data[8] = (byte)width;
+        data[9] = (byte)(height >> 8);
+        data[10] = (byte)height;
+        SendRegister(121, 0, 0, 0, 0, data);
+    }
+
+    /// <summary>设置背光亮度，取值 0–255。</summary>
+    internal void SetBrightness(byte brightness) => SendRegister(110, brightness, 0, 0, 0);
 
     /// <summary>发送完整 RGB565 画面。</summary>
     internal void SendFrame(Bitmap bitmap)
     {
         byte[] pixels = ToRgb565(bitmap);
-        SendRegister(197, 0, 0, bitmap.Width - 1, bitmap.Height - 1);
-        Thread.Sleep(10);
-        port.Write(pixels, 0, pixels.Length);
-        Thread.Sleep(10);
+        byte[] header = BuildRegisterPacket(197, 0, 0, bitmap.Width - 1, bitmap.Height - 1, null);
+        lock (writeGate)
+        {
+            port.Write(header, 0, header.Length);
+            Thread.Sleep(10);
+            port.Write(pixels, 0, pixels.Length);
+            Thread.Sleep(10);
+        }
     }
 
     private void SendRegister(int register, int x, int y, int endX, int endY, byte[]? payload = null)
+    {
+        byte[] packet = BuildRegisterPacket(register, x, y, endX, endY, payload);
+        lock (writeGate)
+            port.Write(packet, 0, packet.Length);
+    }
+
+    /// <summary>
+    /// 按原项目把寄存器头和载荷合并成一次写入。载荷前 6 字节是头部占位，数据从索引 6 开始，
+    /// 例如镜像是固定 16 字节包；拆成 6+16 字节会让固件多读 6 字节并让后续亮度/图像错位。
+    /// </summary>
+    internal static byte[] BuildRegisterPacket(int register, int x, int y, int endX, int endY, byte[]? payload)
+    {
+        byte[] header = BuildRegisterHeader(register, x, y, endX, endY);
+        if (payload is null || payload.Length <= header.Length)
+            return header;
+
+        var packet = new byte[payload.Length];
+        Array.Copy(header, packet, header.Length);
+        Array.Copy(payload, header.Length, packet, header.Length, payload.Length - header.Length);
+        return packet;
+    }
+
+    /// <summary>按原项目 10 位坐标格式生成寄存器头。</summary>
+    internal static byte[] BuildRegisterHeader(int register, int x, int y, int endX, int endY)
     {
         var header = new byte[6];
         header[0] = (byte)(x >> 2);
@@ -50,12 +106,10 @@ internal sealed class NativeThemeSerialSession : IDisposable
         header[3] = (byte)(((endX & 0x3f) << 2) + (endY >> 8));
         header[4] = (byte)(endY & 0xff);
         header[5] = (byte)register;
-        port.Write(header, 0, header.Length);
-        if (payload is not null)
-            port.Write(payload, 0, payload.Length);
+        return header;
     }
 
-    private static byte[] ToRgb565(Bitmap bitmap)
+    internal static byte[] ToRgb565(Bitmap bitmap)
     {
         int width = bitmap.Width;
         int height = bitmap.Height;

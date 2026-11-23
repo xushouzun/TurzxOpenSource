@@ -6,7 +6,7 @@ Explore TURZX displays and more at the [official TURZX website](https://www.turz
 
 Turn a TURZX Win207 USB screen into a desktop dashboard. Crop a webpage or window, layer it over a video, or loop a set of photos. Preview the result in Studio before sending it to the display.
 
-**[Download for Windows](../../releases)** · **[Try the sample scenes](docs/scenes.md)** · **[Check hardware compatibility](docs/compatibility.md)** · **[Build with the .NET SDK](docs/developer-guide.en.md)**
+**[Download for Windows](./releases)** · **[Try the sample scenes](docs/scenes.en.md)** · **[Check hardware compatibility](docs/compatibility.en.md)** · **[Build with the .NET SDK](docs/developer-guide.en.md)**
 
 | Digital clock | Neon star trails | Pixel fireworks |
 | :---: | :---: | :---: |
@@ -18,7 +18,7 @@ Looping GIF previews are rendered at the 2.1-inch round display’s 480 × 480 r
 
 1. Download the Windows x64 ZIP from Releases, extract it, and run `TURZX.WinUsbDisplay.Studio.exe`. The package includes the .NET runtime.
 2. In **Media**, choose **Render HTML live** as the foreground source and select **Digital clock**. HTML preview works without a USB display and requires Chrome or Edge.
-3. Physical output requires a matching WinUSB driver and a packet key from the firmware maintainer. Follow the [first-display guide](docs/first-display.md#english) to check the hardware ID and verify still-image output.
+3. Physical output requires a matching WinUSB driver and a packet key from the firmware maintainer. Follow the [first-display guide](docs/first-display.en.md) to check the hardware ID and verify still-image output.
 
 ## Display compatibility
 
@@ -45,11 +45,11 @@ Looping GIF previews are rendered at the 2.1-inch round display’s 480 × 480 r
 | 9.2 inch A092 | `1CBE:A092` | 464 × 1920 |
 | 12.3 inch | `1CBE:0123` | 720 × 1920 |
 
-The table above lists common models. All 35 Win207 PIDs (including 1.6/1.8/2.8/2.88/3.4/3.5/3.92/10/11.3/12.4/12.68/14.5-inch variants) are listed in the [compatibility records](docs/compatibility.md#支持的-win207-型号--supported-win207-models).
+The table above lists common models. All 35 Win207 PIDs (including 1.6/1.8/2.8/2.88/3.4/3.5/3.92/10/11.3/12.4/12.68/14.5-inch variants) are listed in the [compatibility records](docs/compatibility.en.md#supported-win207-models).
 
-The 3.5-inch native-theme display uses a `1A86:5722` CH340 serial interface and is not part of the WinUSB table above. Studio shows only the native theme source, renders JSON `.data` locally and sends the frame over serial. Three IP-neutral factory themes are bundled. See the [compatibility records](docs/compatibility.md#原生主题设备--native-theme-devices).
+The 3.5-inch native-theme display uses a `1A86:5722` CH340 serial interface and is not part of the WinUSB table above. Studio shows only the native theme source, renders JSON `.data` locally and sends the frame over serial. Three IP-neutral factory themes are bundled. See the [compatibility records](docs/compatibility.en.md#native-theme-devices).
 
-See the [compatibility records](docs/compatibility.md) for model variants, orientation and command differences. Older WCH, CDC and HID display protocols are out of scope, as are the 6.2-inch legacy WinLcd model `1CBE:0062` and the legacy 4-inch `1D6B:A040`.
+See the [compatibility records](docs/compatibility.en.md) for model variants, orientation and command differences. Older WCH, CDC and HID display protocols are out of scope, as are the 6.2-inch legacy WinLcd model `1CBE:0062` and the legacy 4-inch `1D6B:A040`.
 
 ## Running
 
@@ -87,7 +87,7 @@ Open **Docs** to search by number or command name and copy selections and call e
 
 ## Example scenes
 
-Choose **Render HTML live** and select a preset from the sample scene dropdown. See the [list of built-in presets](docs/scenes.md). They render locally and their transparent regions can sit over a video background. Edit them under `src/TURZX.WinUsbDisplay.Studio/Scenes` or use them as a starting point for your own scenes.
+Choose **Render HTML live** and select a preset from the sample scene dropdown. See the [list of built-in presets](docs/scenes.en.md). They render locally and their transparent regions can sit over a video background. Edit them under `src/TURZX.WinUsbDisplay.Studio/Scenes` or use them as a starting point for your own scenes.
 
 ## Live input and video background
 
@@ -116,7 +116,7 @@ On a supported display, send command `150` to set Windows desktop mode, then sen
 
 ## .NET integration
 
-Download `TURZX-WinUsbDisplay-SDK.zip` from the matching [release](../../releases). Reference `lib/TURZX.WinUsbDisplay.dll` for device control and add `TURZX.WinUsbDisplay.Media.dll` for media processing. The archive includes API documentation and a discovery example. See the [developer guide](docs/developer-guide.en.md) for source builds and API usage.
+Download `TURZX-WinUsbDisplay-SDK.zip` from the matching [release](./releases). Reference `lib/TURZX.WinUsbDisplay.dll` for device control and add `TURZX.WinUsbDisplay.Media.dll` for media processing. The archive includes API documentation and a discovery example. See the [developer guide](docs/developer-guide.en.md) for source builds and API usage.
 
 ## Troubleshooting
 

@@ -96,6 +96,7 @@
   "SelectTargetDisplay": "出力先のディスプレイを選択してください。",
   "NativeTheme": "ネイティブテーマ",
   "NativeThemeHint": "このディスプレイはネイティブテーマのみ対応しています。他の前景ソースは非表示です。JSON .data に対応し、旧バイナリテーマは変換が必要です。",
+  "NativeInvert": "表示を反転",
   "SelectNativeTheme": ".data ネイティブテーマを選択してください。",
   "NativeThemePlaying": "ネイティブテーマを再生中：{0}",
   "NativeThemeStopped": "ネイティブテーマの再生を停止しました。",

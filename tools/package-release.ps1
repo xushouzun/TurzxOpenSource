@@ -85,14 +85,17 @@ try {
         "$stage/sdk-build/bin/TURZX.WinUsbDisplay/release/TURZX.WinUsbDisplay.xml",
         "$stage/sdk-build/bin/TURZX.WinUsbDisplay.Media/release/TURZX.WinUsbDisplay.Media.dll",
         "$stage/sdk-build/bin/TURZX.WinUsbDisplay.Media/release/TURZX.WinUsbDisplay.Media.xml" -Destination "$sdk/lib"
-    Copy-Item LICENSE, NOTICE.md, SECURITY.md -Destination $sdk
+    Copy-Item LICENSE, NOTICE.md, NOTICE.zh-CN.md, SECURITY.md, SECURITY.zh-CN.md -Destination $sdk
     Copy-Item README.sdk-package.md -Destination "$sdk/README.md"
+    Copy-Item README.sdk-package.zh-CN.md -Destination "$sdk/README.zh-CN.md"
     Copy-Item docs/developer-guide*.md, docs/win207-protocol*.md -Destination "$sdk/docs"
     Copy-Item examples/SdkDiscover/Program.cs, examples/SdkDiscover/SdkDiscover.csproj -Destination "$sdk/examples/SdkDiscover"
 
-    Copy-Item LICENSE, NOTICE.md, SECURITY.md -Destination $studio
+    Copy-Item LICENSE, NOTICE.md, NOTICE.zh-CN.md, SECURITY.md, SECURITY.zh-CN.md -Destination $studio
     Copy-Item README.studio-package.md -Destination "$studio/README.md"
-    Copy-Item docs/scenes.md, docs/compatibility.md, docs/first-display.md -Destination "$studio/docs"
+    Copy-Item README.studio-package.zh-CN.md -Destination "$studio/README.zh-CN.md"
+    Copy-Item docs/scenes.md, docs/scenes.en.md, docs/compatibility.md, docs/compatibility.en.md,
+        docs/first-display.md, docs/first-display.en.md -Destination "$studio/docs"
 
     # 从暂存目录构建示例，验证打包后的 SDK 文件足以编译。
     dotnet build "$sdk/examples/SdkDiscover/SdkDiscover.csproj" -c Release --artifacts-path "$stage/example-build"

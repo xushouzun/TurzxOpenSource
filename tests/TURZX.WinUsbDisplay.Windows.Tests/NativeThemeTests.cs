@@ -120,6 +120,48 @@ public class NativeThemeTests
     }
 
     [Fact]
+    public void SerialHeaderMatchesOriginalEncoding()
+    {
+        Assert.Equal(new byte[] { 0, 0, 7, 125, 63, 197 },
+            NativeThemeSerialSession.BuildRegisterHeader(197, 0, 0, 479, 319));
+        Assert.Equal(new byte[] { 0, 0, 0, 0, 0, 255 },
+            NativeThemeSerialSession.BuildRegisterHeader(255, 0, 0, 0, 0));
+    }
+
+    [Fact]
+    public void ControlPacketsKeepTheOriginalSingleWriteFraming()
+    {
+        // 原项目把镜像/方向作为固定 16 字节包一次写出：6 字节头 + 10 字节数据。
+        // 拆成 6 字节头加 16 字节载荷会让固件多读 6 字节，后续亮度和图像全部错位。
+        var mirror = new byte[16];
+        byte[] packet = NativeThemeSerialSession.BuildRegisterPacket(122, 0, 0, 0, 0, mirror);
+        Assert.Equal(16, packet.Length);
+        Assert.Equal(new byte[] { 0, 0, 0, 0, 0, 122 }, packet[..6]);
+        Assert.Equal(0, packet[6]);
+
+        var rotation = new byte[16];
+        rotation[6] = 102; // 横屏 2 + 100
+        rotation[7] = 0x01; rotation[8] = 0xE0; // 480
+        rotation[9] = 0x01; rotation[10] = 0x40; // 320
+        packet = NativeThemeSerialSession.BuildRegisterPacket(121, 0, 0, 0, 0, rotation);
+        Assert.Equal(16, packet.Length);
+        Assert.Equal(new byte[] { 0, 0, 0, 0, 0, 121 }, packet[..6]);
+        Assert.Equal(new byte[] { 102, 0x01, 0xE0, 0x01, 0x40 }, packet[6..11]);
+
+        // 无载荷的控制包仍然只有 6 字节，亮度/唤醒不受影响。
+        Assert.Equal(new byte[] { 42, 0, 0, 0, 0, 110 },
+            NativeThemeSerialSession.BuildRegisterPacket(110, 168, 0, 0, 0, null));
+    }
+
+    [Fact]
+    public void Rgb565UsesLittleEndian()
+    {
+        using var bitmap = new Bitmap(1, 1);
+        bitmap.SetPixel(0, 0, Color.Red);
+        Assert.Equal(new byte[] { 0x00, 0xF8 }, NativeThemeSerialSession.ToRgb565(bitmap));
+    }
+
+    [Fact]
     public void RejectsThemesForOtherCanvasSizes()
     {
         using var directory = new TemporaryDirectory();

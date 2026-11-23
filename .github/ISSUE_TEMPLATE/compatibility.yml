@@ -1,9 +1,9 @@
-name: 设备兼容性 / Device compatibility
-description: 记录实机结果或复现设备问题 / Share on-device results or reproduce a device issue
+name: Device compatibility
+description: Share on-device results or reproduce a device issue
 body:
   - type: markdown
     attributes:
-      value: 请从日志中移除封包参数和序列号。 / Remove packet keys and serial numbers from logs.
+      value: Remove packet keys and serial numbers from logs.
   - type: input
     id: hardware
     attributes:
@@ -14,22 +14,22 @@ body:
   - type: input
     id: firmware
     attributes:
-      label: 固件版本 / Firmware version
-      description: 无法读取时请填写未知。 / Enter unknown if the firmware could not be read.
+      label: Firmware version
+      description: Enter unknown if the firmware could not be read.
       placeholder: turzx_0001_0017
     validations:
       required: true
   - type: input
     id: environment
     attributes:
-      label: Windows 版本、应用版本和入口 / Windows version, app version and entry point
+      label: Windows version, app version and entry point
       placeholder: Windows 11, v0.1.0, Studio
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: 操作步骤和结果 / Steps and results
-      description: 请写明方向、前景来源、视频背景、预期结果和实体屏表现。 / Include rotation, foreground source, video background, expected result and physical output.
+      label: Steps and results
+      description: Include rotation, foreground source, video background, expected result and physical output.
     validations:
       required: true

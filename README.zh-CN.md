@@ -6,7 +6,7 @@
 
 把 TURZX USB 副屏变成桌面仪表盘。框选网页或窗口、叠加视频背景、循环播放照片，在 Studio 预览后直接送屏。
 
-**[下载 Windows 版](../../releases)** · **[试用示例场景](docs/scenes.md)** · **[查设备兼容性](docs/compatibility.md)** · **[接入 .NET SDK](docs/developer-guide.md)**
+**[下载 Windows 版](./releases)** · **[试用示例场景](docs/scenes.md)** · **[查设备兼容性](docs/compatibility.md)** · **[接入 .NET SDK](docs/developer-guide.md)**
 
 | 数字时钟 | 霓虹星轨 | 像素烟花 |
 | :---: | :---: | :---: |
@@ -45,9 +45,9 @@
 | 9.2 寸 A092 | `1CBE:A092` | 464 × 1920 |
 | 12.3 寸 | `1CBE:0123` | 720 × 1920 |
 
-以上为常用型号；全部 35 个 Win207 PID（含 1.6/1.8/2.8/2.88/3.4/3.5/3.92/10/11.3/12.4/12.68/14.5 寸等）见[兼容性记录](docs/compatibility.md#支持的-win207-型号--supported-win207-models)。
+以上为常用型号；全部 35 个 Win207 PID（含 1.6/1.8/2.8/2.88/3.4/3.5/3.92/10/11.3/12.4/12.68/14.5 寸等）见[兼容性记录](docs/compatibility.md#支持的-win207-型号)。
 
-3.5 寸原生主题屏使用 `1A86:5722` CH340 串口，不属于上表的 WinUSB 设备。Studio 识别后只显示原生主题，在本机渲染 JSON `.data` 后通过串口送屏，并内置三个不涉及第三方版权的默认主题；详见[兼容性记录](docs/compatibility.md#原生主题设备--native-theme-devices)。
+3.5 寸原生主题屏使用 `1A86:5722` CH340 串口，不属于上表的 WinUSB 设备。Studio 识别后只显示原生主题，在本机渲染 JSON `.data` 后通过串口送屏，并内置三个不涉及第三方版权的默认主题；详见[兼容性记录](docs/compatibility.md#原生主题设备)。
 
 各型号的变体说明、方向和指令差异见[兼容性记录](docs/compatibility.md)。旧款 WCH、CDC、HID 显示协议、6.2 寸旧 WinLcd 型号 `1CBE:0062` 以及旧版 4 寸 `1D6B:A040` 不在此实现的支持范围内。
 
@@ -116,7 +116,7 @@ your-renderer.exe | dotnet run --project src/TURZX.WinUsbDisplay.Cli -- frames 0
 
 ## .NET 接入
 
-从对应版本的 [Releases](../../releases) 下载 `TURZX-WinUsbDisplay-SDK.zip`。设备控制只需引用 `lib/TURZX.WinUsbDisplay.dll`，需要媒体处理时再引用 `TURZX.WinUsbDisplay.Media.dll`。包内提供 API 文档和设备枚举示例。源码构建和 API 用法见 [开发指南](docs/developer-guide.md)。
+从对应版本的 [Releases](./releases) 下载 `TURZX-WinUsbDisplay-SDK.zip`。设备控制只需引用 `lib/TURZX.WinUsbDisplay.dll`，需要媒体处理时再引用 `TURZX.WinUsbDisplay.Media.dll`。包内提供 API 文档和设备枚举示例。源码构建和 API 用法见 [开发指南](docs/developer-guide.md)。
 
 ## 故障排查
 
@@ -139,7 +139,7 @@ dotnet run --project src/TURZX.WinUsbDisplay.Studio
 
 ## 目录
 
-来源和随包素材说明见 [NOTICE](NOTICE.md)。提交问题或实测结果请参阅[贡献指南](CONTRIBUTING.md)，私下报告漏洞请参阅[安全政策](SECURITY.md)。
+来源和随包素材说明见 [NOTICE](NOTICE.zh-CN.md)。提交问题或实测结果请参阅[贡献指南](CONTRIBUTING.zh-CN.md)，私下报告漏洞请参阅[安全政策](SECURITY.zh-CN.md)。
 
 - `src/TURZX.WinUsbDisplay` 提供设备枚举、WinUSB 通信和 Win207 设备控制 SDK。
 - `src/TURZX.WinUsbDisplay.Media` 提供可选的 HTML 捕捉、视频转码和无头帧输入。

@@ -246,7 +246,7 @@ try {
                 $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
                 try {
                     $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-                    foreach ($required in @('LICENSE', 'NOTICE.md', 'SECURITY.md', 'README.md')) {
+                    foreach ($required in @('LICENSE', 'NOTICE.md', 'NOTICE.zh-CN.md', 'SECURITY.md', 'SECURITY.zh-CN.md', 'README.md', 'README.zh-CN.md')) {
                         if ($required -notin $entries) { throw "$archiveName is missing $required." }
                     }
                     $specific = if ($archiveName -like '*Studio*') {

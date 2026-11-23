@@ -684,9 +684,23 @@ public partial class MainWindow : Window
         }, backgroundVideo ? T("PreparingVideo") : T("PreparingImage"), resumeOnReconnect: true);
     }
 
-    /// <summary>选择任意位置的原生主题 JSON 文件。</summary>
-    private void OnBrowseNativeTheme(object sender, RoutedEventArgs e)
+    /// <summary>原生主题亮度变化时下发到串口。</summary>
+    private void OnNativeBrightnessChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        if (NativeBrightness is null)
+            return;
+        nativeThemePlayer.SetBrightness((byte)Math.Round(e.NewValue * 255 / 100));
+    }
+
+    /// <summary>原生主题方向变化时下发到串口。</summary>
+    private void OnNativeOrientationChanged(object sender, RoutedEventArgs e)
+    {
+        if (NativeInvert is not null)
+            nativeThemePlayer.SetInvert(NativeInvert.IsChecked == true);
+    }
+
+    /// <summary>选择任意位置的原生主题 JSON 文件。</summary>
+    private void OnBrowseNativeTheme(object sender, RoutedEventArgs e)    {
         string? initial = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault();
         var picker = new OpenFileDialog
         {
@@ -716,7 +730,9 @@ public partial class MainWindow : Window
         Status.Text = T("SendingLiveOutput");
         try
         {
-            await nativeThemePlayer.StartAsync(nativeTheme, theme, deviceControlShutdown.Token);
+            byte brightness = (byte)Math.Round(NativeBrightness.Value * 255 / 100);
+            await nativeThemePlayer.StartAsync(nativeTheme, theme, brightness, NativeInvert.IsChecked == true,
+                deviceControlShutdown.Token);
             nativeThemePlaying = true;
             SelectedDeviceChoice?.SetPlaybackLabel(T("Playing"));
             Status.Text = T("NativeThemePlaying", Path.GetFileNameWithoutExtension(theme));

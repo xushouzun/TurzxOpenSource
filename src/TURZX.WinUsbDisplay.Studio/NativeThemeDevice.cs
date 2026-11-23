@@ -80,6 +80,12 @@ internal sealed record NativeThemeDevice(string PortName, string InstanceId, str
 internal sealed class NativeThemePlayer : IDisposable
 {
     private NativeThemeSerialSession? session;
+    private System.Drawing.Bitmap? lastFrame;
+    private byte brightness = 168;
+    private bool invert;
+    private bool landscape;
+    private int width;
+    private int height;
 
     /// <summary>指示原生主题播放是否仍在运行。</summary>
     internal bool IsRunning => session is not null;
@@ -105,7 +111,8 @@ internal sealed class NativeThemePlayer : IDisposable
     }
 
     /// <summary>读取主题、渲染一帧并发送到 3.5 寸屏幕。</summary>
-    internal async Task StartAsync(NativeThemeDevice device, string themePath, CancellationToken cancellation)
+    internal async Task StartAsync(NativeThemeDevice device, string themePath, byte brightness, bool invert,
+        CancellationToken cancellation)
     {
         if (!File.Exists(themePath))
             throw new NativeThemePlayerException("The selected native theme was not found.", "SelectNativeTheme");
@@ -114,7 +121,7 @@ internal sealed class NativeThemePlayer : IDisposable
         {
             cancellation.ThrowIfCancellationRequested();
             using NativeThemeDocument document = NativeThemeDocument.Load(themePath);
-            using System.Drawing.Bitmap frame = NativeThemeRenderer.Render(document);
+            System.Drawing.Bitmap frame = NativeThemeRenderer.Render(document);
 
             NativeThemeSerialSession next;
             try
@@ -123,32 +130,102 @@ internal sealed class NativeThemePlayer : IDisposable
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             {
+                frame.Dispose();
                 throw new NativeThemePlayerException(error.Message, "NativeThemeSerialFailed");
             }
 
             try
             {
+                // 原项目顺序：连接探测 -> 唤醒 -> 镜像/方向 -> 亮度 -> 完整图像。
+                // 端口打开后先留出和原项目 TestConnect 相同的稳定时间，再发探测包。
+                Thread.Sleep(100);
+                next.TestConnection();
+                Thread.Sleep(100);
                 next.Wake();
+                Thread.Sleep(100);
+                next.SetMirrorMode(0);
+                next.SetRotation(RotationFor(document.IsLandscape, invert), frame.Width, frame.Height);
+                Thread.Sleep(500);
+                next.SetBrightness(brightness);
+                SaveSentFrame(frame);
                 next.SendFrame(frame);
             }
             catch
             {
+                frame.Dispose();
                 next.Dispose();
                 throw;
             }
 
             NativeThemeSerialSession? previous = session;
+            System.Drawing.Bitmap? previousFrame = lastFrame;
             session = next;
+            lastFrame = frame;
+            previousFrame?.Dispose();
+            this.brightness = brightness;
+            this.invert = invert;
+            landscape = document.IsLandscape;
+            width = frame.Width;
+            height = frame.Height;
             previous?.Dispose();
         }, cancellation).ConfigureAwait(false);
+    }
+
+    /// <summary>在播放期间调整背光亮度。</summary>
+    internal void SetBrightness(byte value)
+    {
+        if (brightness == value)
+            return;
+        brightness = value;
+        session?.SetBrightness(value);
+    }
+
+    /// <summary>在播放期间调整显示方向。</summary>
+    internal void SetInvert(bool value)
+    {
+        if (invert == value)
+            return;
+        invert = value;
+        if (session is not null)
+        {
+            session.SetRotation(RotationFor(landscape, invert), width, height);
+            if (lastFrame is not null)
+                session.SendFrame(lastFrame);
+        }
+    }
+
+    /// <summary>按原项目规则计算方向：横屏默认 2，竖屏默认 0，反向再加 1。</summary>
+    private static int RotationFor(bool landscape, bool invert) =>
+        ((landscape ? 2 : 0) + (invert ? 1 : 0)) % 4;
+
+    /// <summary>送屏前按需保存实际发送的帧，便于与实物屏幕比对。</summary>
+    internal static void SaveSentFrame(System.Drawing.Bitmap frame)
+    {
+        if (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_NATIVE_THEME_SEND_DIR") is not { Length: > 0 } directory)
+            return;
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            frame.Save(Path.Combine(directory, $"native-theme-{DateTime.Now:yyyyMMdd-HHmmss-fff}.png"),
+                System.Drawing.Imaging.ImageFormat.Png);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or System.Runtime.InteropServices.ExternalException)
+        {
+            // 诊断图保存失败不应打断送屏。
+        }
     }
 
     /// <summary>关闭串口，停止当前播放。</summary>
     internal void Stop()
     {
         NativeThemeSerialSession? active = session;
+        System.Drawing.Bitmap? frame = lastFrame;
         session = null;
+        lastFrame = null;
         active?.Dispose();
+        frame?.Dispose();
     }
 
     /// <summary>停止当前播放。</summary>
