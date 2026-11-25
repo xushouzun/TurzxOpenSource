@@ -171,7 +171,7 @@ public partial class MainWindow
                 && (device.Model.ProductId == 0x0046 || fastSlideshow);
             byte[]? startupHtmlFrame = cachedHtmlFrame;
             cachedHtmlFrame = null;
-            byte[] key = CommandKeyStore.Read();
+            byte[] key = DisplaySettings.ReadCommandKey();
             DeviceVideoCache.Entry? prepared = null;
             byte videoFps = 0;
             try

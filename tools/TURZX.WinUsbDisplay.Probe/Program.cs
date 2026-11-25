@@ -151,7 +151,7 @@ internal static class Program
             try
             {
                 using var video = videoPath == "-" ? Console.OpenStandardInput() : File.OpenRead(videoPath);
-                videoKey = CommandKeyStore.Read();
+                videoKey = DisplaySettings.ReadCommandKey();
                 using var session = device.Open(videoKey);
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
                 var clock = Stopwatch.StartNew();
@@ -239,7 +239,7 @@ internal static class Program
             string source = args[2];
             try
             {
-                byte[] liveKey = CommandKeyStore.Read();
+                byte[] liveKey = DisplaySettings.ReadCommandKey();
                 try
                 {
                     using var session = device.Open(liveKey);
@@ -451,7 +451,7 @@ internal static class Program
         byte[]? key = null;
         try
         {
-            key = CommandKeyStore.Read();
+            key = DisplaySettings.ReadCommandKey();
             using var session = device.Open(key);
             Step("GET_FIRMWARE_VERSION", () => session.ReadVerifiedQueryResponse(10));
             if (still)

@@ -729,7 +729,7 @@ public partial class MainWindow : Window
         var backLayout = EffectiveLayout(background: true);
         await RunPlaybackAsync(device, async active =>
         {
-            byte[] key = CommandKeyStore.Read();
+            byte[] key = DisplaySettings.ReadCommandKey();
             var token = active.Token;
             try
             {
@@ -1184,7 +1184,7 @@ public partial class MainWindow : Window
             string result = await Task.Run(() =>
             {
                 cancellation.ThrowIfCancellationRequested();
-                byte[] key = CommandKeyStore.Read();
+                byte[] key = DisplaySettings.ReadCommandKey();
                 try
                 {
                     cancellation.ThrowIfCancellationRequested();

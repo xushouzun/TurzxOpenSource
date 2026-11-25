@@ -92,7 +92,7 @@ public partial class MainWindow
             : null;
         byte[] fixedFrame = html is null ? CreateBenchmarkFrame(device.Model, frameRotation) : [];
 
-        byte[] key = CommandKeyStore.Read();
+        byte[] key = DisplaySettings.ReadCommandKey();
         try
         {
             using var session = OpenPlaybackDevice(device, key, rotation, token);
