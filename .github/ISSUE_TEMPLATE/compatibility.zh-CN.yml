@@ -3,7 +3,7 @@ description: 记录实机结果或复现设备问题
 body:
   - type: markdown
     attributes:
-      value: 请从日志中移除封包参数和序列号。
+      value: 请从日志中移除设备序列号和私人路径。
   - type: input
     id: hardware
     attributes:

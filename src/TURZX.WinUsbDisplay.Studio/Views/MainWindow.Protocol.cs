@@ -6,7 +6,7 @@ using static TURZX.WinUsbDisplay.Studio.StudioLanguage;
 
 namespace TURZX.WinUsbDisplay.Studio;
 
-// 协议文档、命令调试和封包参数。
+// 协议文档、命令调试和命令密钥。
 public partial class MainWindow
 {
     /// <summary>按文档名称缓存已读入的 Markdown 内容。</summary>
@@ -50,7 +50,12 @@ public partial class MainWindow
     {
         try
         {
-            string name = DocumentationChoice.SelectedIndex == 1 ? "developer-guide" : "win207-protocol";
+            string name = DocumentationChoice.SelectedIndex switch
+            {
+                1 => "serial-protocol",
+                2 => "developer-guide",
+                _ => "win207-protocol"
+            };
             renderedMarkdown = LoadDocumentation(name);
             ProtocolText.Document = MarkdownPreview.Render(renderedMarkdown, destination => OpenDocumentationLink(destination, uri =>
             {
@@ -71,6 +76,8 @@ public partial class MainWindow
     internal void OpenDocumentationLink(string destination, Action<Uri> openExternalLink)
     {
         if (destination == DocumentationFileName("developer-guide"))
+            DocumentationChoice.SelectedIndex = 2;
+        else if (destination == DocumentationFileName("serial-protocol"))
             DocumentationChoice.SelectedIndex = 1;
         else if (destination == DocumentationFileName("win207-protocol"))
             DocumentationChoice.SelectedIndex = 0;
@@ -360,6 +367,23 @@ public partial class MainWindow
         {
             payload = await ReadPacketFileAsync(command, filePath, arguments, token).ConfigureAwait(false);
         });
+
+        if (!raw && command == 150 && response.Length >= 2 && response[1] == 200
+            && !closing && SelectedDevice?.Path == device.Path
+            && await ConfirmAsync(T("RestartDisplay"), T("ConfirmDesktopModeRestart"))
+            && !busy && !closing && SelectedDevice?.Path == device.Path)
+        {
+            await RunDeviceControlAsync(T("RestartingTheDisplay"), session =>
+            {
+                session.RestartDevice();
+                return T("DisplayRestartCommandSent");
+            }, message =>
+            {
+                ClearDeviceMediaList();
+                ResetAdvancedStatus();
+                return message;
+            });
+        }
     }
 
     /// <summary>设置协议应答面板的状态提示。</summary>

@@ -29,11 +29,11 @@ dotnet build src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj -c Release
 </Project>
 ```
 
-ソースから開発する場合は、`src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj` への `ProjectReference` を使用します。Studio と CLI の構成は、デバイス SDK と任意のメディアライブラリを参照する例です。後者は `TURZX.WinUsbDisplay.Media.dll` としてビルドされ、公開型は `TURZX.WinUsbDisplay.Media` 名前空間にあります。メディアライブラリを使う場合は両方の DLL を参照してください。
+ソースから開発する場合は、`src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj` への `ProjectReference` を使用します。Studio と CLI はどちらもデバイス SDK を参照します。メディア処理が必要な場合はメディアライブラリも参照します。メディアライブラリは `TURZX.WinUsbDisplay.Media.dll` としてビルドされ、公開型は `TURZX.WinUsbDisplay.Media` 名前空間にあります。メディアライブラリを使う場合は両方の DLL を参照してください。
 
 ## 2. 初回接続
 
-デバイスの 8 バイトのコマンドパケットキーをファームウェアの保守担当者から入手します。環境変数を使うアプリでは、起動前に対応する 16 桁の 16 進文字列を `WINUSB_DISPLAY_COMMAND_KEY` に設定してください。独自の設定から 8 バイトを読み取り、`device.Open(key)` に直接渡すこともできます。
+コマンドキーは組み込み済みで、`DisplaySettings.ReadCommandKey()` はそのコピーを返します。`device.Open` にはカスタムの 8 バイトキーも渡せます。
 
 ```csharp
 using System.Security.Cryptography;
@@ -64,7 +64,7 @@ finally
 }
 ```
 
-アプリでは現在の接続先を `DisplayDevice.Path` で保持します。リストのインデックスが有効なのは、その列挙結果に限られます。再列挙後にパスが見つからない場合は、ユーザーにデバイスの再選択を求めます。ドライバーが独自のインターフェイス GUID を登録する場合は、`Discover` に直接渡すか `WINUSB_DISPLAY_INTERFACE_GUID` を設定します。
+アプリでは現在の接続先を `DisplayDevice.Path` で保持します。リストのインデックスが有効なのは、その列挙結果に限られます。再列挙後にパスが見つからない場合は、ユーザーにデバイスの再選択を求めます。ドライバーが独自のインターフェイス GUID を登録する場合は、`Discover` に直接渡すか、Studio 設定ファイルの `InterfaceGuid` フィールドに設定します。
 
 ## 3. API と入力
 
@@ -72,25 +72,34 @@ finally
 | --- | --- |
 | `DisplayDevice.Discover(guid)` | 既知のモデルを列挙し、インターフェイスパスとネイティブの幅・高さを返します。デバイスが見つからない場合は空のリストを返します |
 | `device.Open(key)` | 8 バイトのキーでセッションを開きます。セッションはキーのコピーを保持し、破棄時にゼロで消去します |
-| `ReadFirmwareVersion()` | 検証済みのファームウェアバージョン応答を読み取ります |
+| `ReadFirmwareVersion()` | ファームウェアのバージョン文字列を読み取ります |
 | `SetBrightness(percent)` | 範囲は 0～100。12.3 インチモデルでは明るさの上限が自動的に適用されます |
 | `SetRotation(quarterTurns)` | 0～3 は 0°、90°、180°、270° に対応します。再生中の動画を停止してから変更してください |
 | `ShowImage(bytes)` | 950,000 バイト以下の完全な JPEG または 8 ビット RGBA PNG を渡します。送信前にストリーミング動画と時計レイヤーを停止します |
 | `ShowOverlay(png)` | 950,000 バイト以下の完全な 8 ビット RGBA PNG を前景として渡します。H.264 背景は継続し、透過部分はファームウェアが合成します |
-| `PlayVideo(stream, fps, loop, cancellation, onStarted)` | 読み取り可能な Annex B H.264 ストリームを渡します。ループ再生にはシークが必要です。ブロッキング呼び出しなのでバックグラウンドスレッドで実行してください。任意のコールバックは先頭ブロックへの応答後に呼ばれます。読み取り中にキャンセルした場合は、元の操作がまだ完了していないことがあるため、新しいストリームで再試行してください。 |
+| `PlayVideo(stream, fps, loop, cancellation, onStarted)` | 読み取り可能な Annex B H.264 ストリームを渡します。ループ再生にはシークが必要です。ブロッキング呼び出しなのでバックグラウンドスレッドで実行してください。任意のコールバックは先頭ブロックへの応答後に呼ばれます。読み取り中にキャンセルした場合は、元の読み取りがまだ完了していないことがあるため、新しいストリームで再試行してください。 |
 | `SetFrameRate(fps)` | フレームレートだけを毎秒 1～60 フレームに設定します。`PlayVideo` で動画を転送する場合は、同メソッドがフレームレートを設定します |
-| `ReadDeviceDirectory(directory, cancellation)` | ファイル名と `IsComplete` を返します。応答が不完全でも一部の項目が返る場合があります。フォルダーの作成に失敗すると、`Failure` が `DirectoryCreationFailed` の `DeviceResponseException` をスローします |
+| `ReadDeviceDirectory(directory, cancellation)` | ファイル名の一覧と `IsComplete`（ディレクトリを完全に読み取れたか）を返します。不完全な場合でも一部の項目が返ることがあります。フォルダーの作成に失敗すると、`Failure` が `DirectoryCreationFailed` の `DeviceResponseException` をスローします |
 | `PlayDeviceFile(path)` / `DeleteDeviceFile(path)` | デバイス内のファイルを再生または削除します。パスは `/` から始まる ASCII で、最大 484 バイトです。削除応答には共通の成功コードがないため、一覧を再取得して削除を確認してください |
-| `ReadStorageCapacity()` | SD カードと内部フラッシュの容量を KiB 単位で返します |
+| `ReadStorageCapacity()` | SD カードと内部フラッシュの合計、使用済み、空き容量を KiB 単位で返します |
 | `ReadSupplyVoltageMillivolts()` | 対応する機器の電源電圧をミリボルト単位で取得します |
 | `StopPlayback()` | ホストのストリーミング、デバイス内の H.264 再生、JPEG ループを停止します。先に実行中の転送をキャンセルし、終了を待ってください |
 | `StopVideo()` | ストリーミング動画の停止コマンドを送信します。連続送信中は、先にそのタスクをキャンセルして終了を待ってください |
 | `StopLocalVideo()`, `StopImageLoop()` | デバイスに保存された動画または画像のループ再生を停止します |
 | `ShowDefaultClock(enabled)` | ホストのローカル時刻でデバイスの時計を合わせて表示するか、時計表示を停止します |
 | `SwitchToDesktop()` | 次回起動時の Windows デスクトップモードを設定します。適用するには呼び出し側で別途再起動（11）します |
-| `ExchangeCommand(command, arguments, payload)` | 暗号化チャネルで汎用の送受信を行います。引数は平文ヘッダーのオフセット 8 から最大 492 バイト、ペイロードは USB のオフセット 512 からです。長さとフラグは呼び出し側でプロトコルに従って設定します。実際の応答バイトを返します |
-| `ExchangeRawCommand(command, arguments)` | RAW チャネルで汎用の送受信を行います。コマンド番号はオフセット 0、引数はオフセット 1 から最大 63 バイトです。実際の応答バイトを返します |
-| `ReadDiagnostic(command, raw)` | 生の応答を返します。暗号化チャネルは 10、17、50、60、100、112、122、201、RAW チャネルは 0x60、0x62 に対応します |
+| `ExchangeCommand(command, arguments, payload)` | 暗号化チャネルで汎用の送受信を行います。引数は平文ヘッダーのオフセット 8 から最大 492 バイト、ペイロードは USB のオフセット 512 からです。長さとフラグは呼び出し側でプロトコルに従って設定します。デバイスの応答バイトを返します |
+| `ExchangeRawCommand(command, arguments)` | 非暗号化チャネルで汎用の送受信を行います。コマンド番号はオフセット 0、引数はオフセット 1 から最大 63 バイトです。デバイスの応答バイトを返します |
+| `ReadDiagnostic(command, raw)` | 未解析の診断応答を読み取ります。`raw=false` は暗号化チャネルを使い、コマンド 10、17、50、60、100、112、122、201 のみ受け付けます。`raw=true` は非暗号化チャネルを使い、0x60 と 0x62 のみ受け付けます |
+| `PlayImage(image, fps, cancellation, onStarted, onFrameSent, onTransfer)` | 1～60 フレーム/秒で同じ画像をキャンセルまで送信します。コールバックで開始、各フレーム送信、転送時間を通知できます |
+| `ShowJpegFrame(jpeg, onTransfer)` | 動画背景なしの連続出力向けに JPEG を 1 フレーム送信します。USB 書き込みと応答時間を記録できます |
+| `SetStartupConfiguration(brightness, startupMode, rotation, keepAwakeOffline, offlineClockRotation)` | 永続起動設定を書き込みます。明るさ 0～100、起動モード 0～2、方向 0～3、オフライン時計の方向 0～3 |
+| `RestartDevice()` | コマンド 11 を送信して画面を再起動します |
+| `ListDeviceFiles(directory)` | デバイスディレクトリ内のファイル名を返します。完了フラグは含みません |
+| `SynchronizeClock()` | ホスト時刻でデバイスの時計を同期します |
+| `SetVideoClockSync(enabled)` | デバイスが映像同期タイミングを待つかどうかを設定します |
+| `ReadVerifiedQueryResponse(command)` | ファームウェア（10）、電圧（50）、ストレージ（100）の応答を照会して検証します |
+| `ExchangeMatchingCommand(command, arguments, payload, minimumLength, cancellation)` | コマンドを送信し、番号と最小長が一致する応答を読み取ります |
 
 デスクトップモードの機器は `DesktopModeDevice.Discover()` で列挙します。`Serial` で選び、`SwitchToMonitorAsync()` で HID レポートを 1 回送信した後、`DisplayDevice.Discover(DisplaySettings.InterfaceGuid)` で同じシリアル番号の WinUSB インターフェイスを確認します。Studio での手順はプロトコルリファレンスの「Windows デスクトップモードと USB 副画面モード」を参照してください。
 
@@ -102,14 +111,14 @@ finally
 
 | `outputRotation` | 出力方向 |
 | --- | --- |
-| `0` | 従来の動作を維持します。既存のオーバーロードはすべてこの値を使用します |
+| `0` | 回転なし |
 | `1` | 反時計回りに 90° |
 | `2` | 180° |
 | `3` | 時計回りに 90° |
 
-奇数値では出力の幅と高さを入れ替えます。`pixelScale` は引き続きピクセル密度を指定します。0 以外の回転はローカル HTML のみに対応します。ページは論理サイズを維持した `iframe` 内で読み込まれ、CSS、スクリプト、画像などの相対 URL は元の HTML のアドレスを基準に解決されます。ページは `iframe` 内で動作できる必要があります。リモート HTTP(S) URL に 0 以外の出力回転を指定すると `NotSupportedException` が発生します。`outputRotation=0` の通常のリモートキャプチャは従来どおりです。このパラメーターはデバイスの回転コマンドを送信しません。
+`outputRotation` が 1 または 3 の場合、出力の幅と高さが入れ替わります。`pixelScale` は引き続きピクセル密度を指定します。0 以外の回転はローカル HTML のみに対応します。ページは論理サイズを維持した `iframe` 内で読み込まれ、CSS、スクリプト、画像などの相対 URL は元の HTML のアドレスを基準に解決されます。ページは `iframe` 内で動作できる必要があります。リモート HTTP(S) URL に 0 以外の出力回転を指定すると `NotSupportedException` が発生します。`outputRotation=0` の通常のリモートキャプチャは従来どおりです。このパラメーターはデバイスの回転コマンドを送信しません。
 
-回転は PNG と JPEG の両方に適用されます。`ReadFrameAsync` と `ReadPngScreencastAsync` は PNG、`ReadJpegFrameAsync` と `ReadJpegScreencastAsync` は JPEG を返します。各組はそれぞれオンデマンドのスクリーンショットと連続フレーム配信に対応します。
+回転はスクリーンショットとフレーム配信の両方に適用されます。`ReadFrameAsync` と `ReadPngScreencastAsync` は PNG、`ReadJpegFrameAsync` と `ReadJpegScreencastAsync` は JPEG を返します。`ReadFrameAsync` と `ReadJpegFrameAsync` は必要に応じてキャプチャし、Screencast 系の 2 つはフレームを連続配信します。
 
 ## 4. セッションとエラー処理
 
@@ -118,6 +127,6 @@ finally
 - ループ再生を停止するには、`CancellationToken` をキャンセルし、転送処理の終了を待ってからセッションを破棄するかコンテンツを切り替えます。開始済みの USB 要求は、応答またはエンドポイントのタイムアウトまで待機します。
 - デバイスを開くときは、`DisplayOpenException.Failure` で共有の競合（`InUse`）とアクセス拒否（`AccessDenied`）を区別できます。動画転送のキャンセル後にデバイスの停止コマンドが失敗すると、`PlaybackStopException` が発生します。
 - WinUSB エラーは、操作名と Windows エラーコードを含む `Win32Exception` として報告されます。書き込みの不足、空または不正な応答は `IOException` になることがあります。デバイスが切断された場合は、古いセッションを破棄して再列挙し、送信済みブロックを無条件に再送しないでください。
-- 診断応答を解析する前に実際の長さを確認してください。コマンドに対応していないモデルやファームウェアは、タイムアウトするか異なる形式を返す場合があります。
+- 診断応答を解析する前に応答の長さを確認してください。コマンドに対応していないモデルやファームウェアは、タイムアウトするか異なる形式を返す場合があります。
 
 コマンド番号、引数のオフセット、バイト順、パケット例については [Win207 デバイスコマンドリファレンス](win207-protocol.ja.md) を参照してください。

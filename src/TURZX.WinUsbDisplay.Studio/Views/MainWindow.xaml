@@ -4,7 +4,7 @@
     xmlns:local="clr-namespace:TURZX.WinUsbDisplay.Studio"
     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     ThemeMode="Dark"
-    Title="TURZX WinUSB Display Studio" Icon="Assets/Studio.ico" Width="1080" Height="690" MinWidth="820" MinHeight="560"
+    Title="TURZX WinUSB Display Studio" Icon="pack://application:,,,/TURZX.WinUsbDisplay.Studio;component/Assets/Studio.ico" Width="1080" Height="690" MinWidth="820" MinHeight="560"
     WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen" Background="#10141F" Foreground="#F3F6FE"
     FontFamily="Segoe UI Variable, Segoe UI, Global User Interface" UseLayoutRounding="True">
     <shell:WindowChrome.WindowChrome>
@@ -347,8 +347,12 @@
                                 <DockPanel Margin="0,5,0,0">
                                     <Button DockPanel.Dock="Right" Content="{DynamicResource L.Browse}"
                                             Click="OnBrowseNativeTheme" Margin="8,0,0,0" />
-                                    <TextBox x:Name="NativeThemePath" IsReadOnly="True"
-                                             AutomationProperties.Name="{DynamicResource L.NativeTheme}" />
+                                    <Button DockPanel.Dock="Right" Content="{DynamicResource L.Clear}"
+                                            Click="OnClearNativeTheme" Margin="8,0,0,0" />
+                                    <ComboBox x:Name="NativeThemeChoice" DisplayMemberPath="Name"
+                                              SelectionChanged="OnNativeThemeChoiceChanged"
+                                              ToolTip="{Binding SelectedItem.Path, RelativeSource={RelativeSource Self}}"
+                                              AutomationProperties.Name="{DynamicResource L.NativeTheme}" />
                                 </DockPanel>
                             </StackPanel>
                             <Border Background="#27344C" CornerRadius="8" Padding="8,4" Margin="0,7,0,0">
@@ -444,6 +448,20 @@
                             <WrapPanel Margin="0,6,0,0">
                                 <Button Content="{DynamicResource L.SetAndShowTheFirmwareClock}" Click="OnShowAdvancedClock" Margin="0,0,8,0" />
                                 <Button Content="{DynamicResource L.HideTheFirmwareClock}" Click="OnStopAdvancedClock" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#191F30" CornerRadius="12" BorderBrush="#2A344B" BorderThickness="1"
+                            Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource L.DesktopModeDriverTitle}" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock x:Name="DesktopModeDriverStatus" Style="{StaticResource Muted}"
+                                       TextWrapping="Wrap" Margin="0,6,0,0" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <Button x:Name="InstallDesktopModeDriver" Content="{DynamicResource L.InstallDesktopModeDriver}"
+                                        Click="OnInstallDesktopModeDriver" Padding="9,5" Margin="0,0,6,0" IsEnabled="False" />
+                                <Button x:Name="UninstallDesktopModeDriver" Content="{DynamicResource L.UninstallDesktopModeDriver}"
+                                        Click="OnUninstallDesktopModeDriver" Padding="9,5" IsEnabled="False" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -793,6 +811,7 @@
                               SelectedIndex="0" SelectionChanged="OnDocumentationChanged"
                               AutomationProperties.Name="{DynamicResource L.Documentation}">
                         <ComboBoxItem Content="{DynamicResource L.Protocol}" />
+                        <ComboBoxItem Content="{DynamicResource L.SerialProtocol}" />
                         <ComboBoxItem Content="{DynamicResource L.DLLGuide}" />
                     </ComboBox>
                     <Button Content="{DynamicResource L.Copy}" DockPanel.Dock="Right" Click="OnCopyProtocol" Margin="7,0,0,0"

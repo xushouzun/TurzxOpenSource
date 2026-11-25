@@ -1,58 +1,68 @@
-# TURZX Win207 设备指令技术说明
+# TURZX Win207 device command reference
 
-本文记录本项目实现的 Win207 主机端协议。指令是否可用取决于型号和固件版本。显示名称采用英文大写蛇形命名。读取用 `GET_`，配置用 `SET_`，传输用 `WRITE_`。设备按指令编号和通道识别请求。
+This reference describes the Win207 host protocol implemented by this project. Command support depends on the model and firmware. The tables use upper snake case: `GET_` for reads, `SET_` for configuration, and `WRITE_` for transfers. The device identifies requests by command number and channel.
 
-偏移从 0 开始，范围含首尾。`u8` 是 1 字节无符号整数，`u16be`、`u32be` 是 2、4 字节大端无符号整数，`u32le` 是 4 字节小端无符号整数。「头」指加密前的 500 字节明文头，「应答」指从 IN 端点读取的实际字节。加密通道编号以十进制表示，裸通道编号以十六进制表示。
+Offsets are zero-based and ranges are inclusive. `u8` is a 1-byte unsigned integer; `u16be`, `u32be` are 2- and 4-byte big-endian unsigned integers; `u32le` is a 4-byte little-endian unsigned integer. "Header" means the 500-byte plaintext header before encryption; "reply" means the raw bytes read from the IN endpoint. Encrypted channel numbers are decimal; raw channel numbers are hexadecimal.
 
-## 连接和调用
+## Connection and calling
 
-- Windows 通过设备驱动注册的接口 GUID 枚举。默认 GUID 为 `DEE824EF-729B-4A0E-9C14-B7117D33A817`，可用 `WINUSB_DISPLAY_INTERFACE_GUID` 覆盖。
-- WinUSB OUT 端点为 `0x01`，IN 端点为 `0x81`。每次先发送一条请求，再读取它的应答，避免不同指令错配。Studio 的 OUT 写超时是 10000 毫秒、IN 读超时是 5000 毫秒（实时 PNG 等大块载荷在固件合成背景时会短暂停顿，超时过短会中断传输、卡住端点或丢弃慢回包；正常控制回包很快，超时只是上限），读取缓冲区为 512 字节。
-- 需要从固件维护者获得该固件的 8 字节封包参数。在 Windows 启动 Studio 或 CLI 前，将 `WINUSB_DISPLAY_COMMAND_KEY` 设为对应的 16 位十六进制字符串。SDK 也可直接接收 8 字节参数。
-- 应答解析前检查实际长度。Studio 对固件、存储和供电的结构化查询同时检查应答 0 是否回显请求编号，避免解析其他指令留下的应答。收到 USB 应答与设备成功执行是两个状态，某些指令另有应答字段。
+- Windows enumerates by the interface GUID registered by the device driver. The default GUID is `DEE824EF-729B-4A0E-9C14-B7117D33A817`. For a custom driver, set `InterfaceGuid` in the Studio settings file or pass `--interface-guid` to the CLI.
+- The WinUSB OUT endpoint is `0x01` and the IN endpoint is `0x81`. Send one request then read its reply to avoid mismatches. Studio's OUT write timeout is 10000 ms, the IN read timeout is 5000 ms, and the read buffer is 512 bytes. Large live payloads such as PNGs pause briefly while the firmware composites.
+- The 8-byte packet key is built in. Studio, the CLI and the SDK require no extra configuration; the SDK can still accept a custom 8-byte key.
+- Check the reply length before parsing a reply. For structured firmware, storage and supply queries Studio also checks that reply byte 0 echoes the request number, to avoid parsing a reply left over from another command. A reply does not prove successful execution; some commands add status fields.
 
-## 加密通道封包
+## Encrypted channel packet
 
-| 位置 | 内容 |
+| Position | Content |
 | --- | --- |
-| 明文 0 | 指令编号 |
-| 明文 1 | 保留为 0 |
-| 明文 2–3 | 固定标识 `1A 6D` |
-| 明文 4–7 | 当前 UTC 时间与会话创建时的本地昨天零点之间的毫秒差低 32 位，小端 |
-| 明文 8–499 | 指令参数，空余部分填 0 |
-| USB 请求 0–503 | 500 字节明文以 DES-CBC 加密，PKCS#7 填充。IV 和密钥均为固件参数 |
-| USB 请求 504–509 | 六个 0 字节 |
-| USB 请求 510–511 | 固定尾标 `A1 1A` |
-| USB 请求 512 起 | 可选原始载荷。媒体载荷不参与头部加密 |
+| plaintext 0 | command number |
+| plaintext 1 | reserved, 0 |
+| plaintext 2–3 | fixed marker `1A 6D` |
+| plaintext 4–7 | Low 32 bits of the millisecond difference between current UTC and the local start of the previous day, as determined at session creation. Little-endian |
+| plaintext 8–499 | command arguments, remainder zero-filled |
+| USB request 0–503 | the 500 plaintext bytes encrypted with DES-CBC, PKCS#7 padding. IV and key are both the firmware key |
+| USB request 504–509 | six zero bytes |
+| USB request 510–511 | fixed tail `A1 1A` |
+| USB request 512 onward | optional raw payload. Media payloads are not part of the header encryption |
 
-DES-CBC 是现有固件的兼容格式。设备应答保持明文。命令 101、102、121 的明文 8–11 存载荷字节数（大端）。单字节控制参数一般放在明文 8。
+DES-CBC is the compatibility format of existing firmware. Device replies stay plaintext. Commands 101, 102 and 121 store the payload byte count (big-endian) at plaintext 8–11. Single-byte control arguments generally go at plaintext 8.
 
-## 通用收发接口
+## Generic send/receive interface
 
-头部参数和载荷均可选择十进制或十六进制。普通十进制输入按空格分隔的 0–255 字节解释；101/102 的头部十进制数是完整载荷长度，121 输入“块长度 末块标志”，自动生成大端字段。38/42/98/99/110/113 默认使用设备路径输入，直接填写绝对 ASCII 路径，程序生成长度、保留字节和路径。切换格式会清空对应输入，避免按另一进制误发。未知格式仍需遵循指令定义。 十进制头部参数 `39` 按“缓冲容量 有效长度 末块标志”输入，`51` 按“年 月 日 时 分 秒 模式”输入。
+In **Device commands**, header arguments and payloads support decimal and hexadecimal input. Ordinary decimal input is a space-separated sequence of bytes (0–255). For 101/102, the decimal header value is the full payload length; for 121, enter `block-length final-flag`. These lengths are encoded big-endian.
 
-指令 101（JPEG）、102（PNG）和 40（小文件写入）支持浏览本地文件。Studio 自动填写字节长度，40 还需输入设备上的绝对 ASCII 目标路径，文件须小于 100 KiB。选中文件后仍需手动发送。指令 121 的 **浏览 H.264** 会在媒体页选择 `.h264` 或 `.264` 作为背景视频。整段播放由播放器负责分块和缓冲队列控制。只播视频时清空前景。已存入设备的文件可在 **高级控制 → 设备内媒体** 中选择。 `39` 也可选择本地文件，先用 `38` 创建目标文件。文件须非空且不超过 1 MiB，Studio 自动补足 1 MiB 缓冲、填写有效长度并标记为末块。`40` 要求目标目录已存在，写入后可用 `98` 核对文件大小。选择 `121` 的背景文件后仍停留在设备指令页，手动到 **媒体** 页开始播放。 本地 JPEG 和 PNG 须非空且不超过 950,000 字节。
+Commands 38/42/98/99/110/113 default to an absolute ASCII device path, with the length field and reserved bytes filled in automatically. Changing input format clears that input to prevent reinterpretation. Unlisted commands follow their own definitions. For decimal header input on `39`, enter `buffer-capacity valid-length final-flag`. For `51`, enter `year month day hour minute second mode`.
 
-WinUSB 通用收发打开设备会话时需要封包参数。发送前请停止所选设备的 Studio 播放。每次发送一条请求。除 `99` 外，加密通道检查应答的指令回显及最短长度，遇到残留回包继续读取，不重发请求。`99` 在指令页只显示一段文本回包，完整目录请到 **高级控制 → 设备内媒体** 刷新，并检查结果是否完整。
+Commands 101 (JPEG), 102 (PNG) and 40 (small-file write) support browsing for a local file. Studio fills in byte lengths; 40 also requires an absolute ASCII destination path on the device and a file under 100 KiB. Selecting a file prepares the request; use **Send** to transmit it.
 
-在 Studio 的 **设备指令** 中，从左侧列表选择指令。右侧只显示该指令需要的输入项。可用的无参数指令可直接发送，参数较多时可滚动右侧表单。也可在右侧手动更改编号或通道，左侧会选中对应预设，右侧同步更新说明和表单，并清空上一条指令的参数与所选文件。没有对应预设时，列表不选中任何指令。编号可用十进制或 `0x` 前缀十六进制表示。加密通道和裸通道的编号彼此独立，例如加密十进制 `60` 查询方向，裸十六进制 `0x60` 查询温度。
+For command 121, **Browse H.264** selects a `.h264` or `.264` background video. Studio stays on the Commands page; open **Media** to start playback. Clear the foreground for video-only playback. Studio handles stream blocks and queue pacing.
 
-| 输入或返回 | 加密 Win207 | 裸通道 |
+Command 39 also supports a local file, but create the destination with 38 first. Choose a nonempty file of up to 1 MiB; Studio pads the buffer to 1 MiB, fills in the valid length and marks it as final. 40 requires an existing target directory; check the written file size with 98.
+
+Files already on the device are available under **Advanced controls → On-device media**. Local JPEG and PNG files must contain 1 to 950,000 bytes.
+
+Stop Studio playback on the selected device before sending. For encrypted commands other than `99`, the console checks that the reply echoes the command number and meets the minimum length, then reads past stale replies without resending. Command `99` displays a single text fragment. Refresh the full directory under **Advanced controls → On-device media** and check whether the listing is complete.
+
+In Studio **Device commands**, select a command from the list on the left; the right pane shows the inputs that apply to it. Supported commands with no parameters can be sent directly. Scroll the form when it has more fields than fit; the **Send** button and response area stay below it.
+
+You can also edit the command number or channel on the right. The list selects the matching preset, if available, and the right pane updates its description and form. Editing the number or channel clears the previous command's parameters and attached file. Use decimal or `0x`-prefixed hexadecimal numbers. Encrypted and raw channel numbers are independent; for example, encrypted decimal `60` queries orientation while raw hex `0x60` queries temperature.
+
+| Input or return | Encrypted Win207 | Raw channel |
 | --- | --- | --- |
-| 指令编号 | 0–255，写入明文头偏移 0 | 0–255，写入请求偏移 0 |
-| 参数 | 0–492 字节，从明文头偏移 8 写入，余下填零 | 0–63 字节，从偏移 1 写入，余下填零 |
-| 载荷 | 可选，从 USB 偏移 512 追加。按指令表填写长度、标志等头部参数，通用接口不推断字段 | 无独立载荷，请求固定 64 字节 |
-| 返回 | IN 端点实际返回的全部字节，保留零字节，不填充到 512 字节 | 同左 |
-| 无回包或传输失败 | 空回包、短写以 I/O 错误报告。驱动错误包含操作名和 Windows 错误码 | 同左 |
+| command number | 0–255, written at plaintext header offset 0 | 0–255, written at request offset 0 |
+| arguments | 0–492 bytes from plaintext header offset 8, remainder zero-filled | 0–63 bytes from offset 1, remainder zero-filled |
+| payload | optional, appended from USB offset 512. Fill length, flags and other header fields per the command table; Studio does not infer them | no separate payload; request is fixed 64 bytes |
+| return | all bytes returned by the IN endpoint, zero bytes preserved, not padded to 512 | same |
+| no reply or transfer failure | empty reply or short write reported as an I/O error. Driver errors include the operation name and Windows error code | same |
 
-应答视图左列为十六进制字节偏移，中间为字节值，右列为可打印 ASCII，其余字符显示为点。应答编号、字段偏移与状态码以各指令说明为准。需要验证设备行为时，请核对对应状态或实体屏输出。
+The reply view shows byte offsets and byte values in hexadecimal, followed by printable ASCII. Other characters appear as dots. Refer to each command for its reply number, field offsets and status values. Check the relevant device status or display output to confirm the operation.
 
-| 示例 | 通道与编号 | 参数 | 读回值 |
+| Example | Channel and number | Arguments | Read-back |
 | --- | --- | --- | --- |
-| 查询固件 | 加密 10 | 留空 | 检查应答长度至少 40，偏移 0 为 10，8–39 为 UTF-8 版本文本 |
-| 查询 H.264 块大小 | 加密 17 | 留空 | 应答至少 12 字节，8–11 为大端块长，0 表示默认值 |
-| 设置亮度为设备值 60 | 加密 14 | `3C` | 统一成功码未定义。需按型号应用亮度上限时使用 SDK 的 `SetBrightness` |
-| 查询散热温度 | 裸 0x60 | 留空 | 应答至少 3 字节，1、2 为泵和风扇温度，单位 °C |
+| query firmware | encrypted 10 | empty | check reply length ≥ 40, offset 0 = 10, 8–39 = UTF-8 version text |
+| query H.264 block size | encrypted 17 | empty | reply ≥ 12 bytes, 8–11 = big-endian block length, 0 means default |
+| set brightness to device value 60 | encrypted 14 | `3C` | No common success code is specified. Use SDK `SetBrightness` to apply the model brightness cap |
+| query cooling temperature | raw 0x60 (SDK) | empty | reply ≥ 3 bytes, 1 and 2 = pump and fan temperature in °C |
 
 ```csharp
 byte[] firmware = screen.ExchangeCommand(10);
@@ -61,108 +71,110 @@ Console.WriteLine(Convert.ToHexString(firmware));
 Console.WriteLine(Convert.ToHexString(temperatures));
 ```
 
-切换指令编号或通道会重置编辑器，请在选好指令后填参数。表单较长时可在右侧请求区滚动，发送按钮和应答区保留在下方。
+Examples generated on the **Code** tab check the model and request ranges before opening the display; the delete example requires typing `DELETE` to send.
 
-**使用代码**生成的示例会在打开设备前检查型号和本次指令的参数范围。加密指令使用匹配的应答，目录查询 `99` 返回一段目录数据。删除示例会显示设备接口和完整文件路径，并要求输入 `DELETE` 才发送。
+## Windows desktop mode and USB display mode
 
-## Windows 桌面模式与副屏模式
+On a supported display, send `150` in **Device commands**. Command `150` sets the mode for the next boot; after the device acknowledges it, Studio offers to restart immediately, and you can also send `11` separately. After the restart into Windows desktop mode, the WinUSB interface disappears and the desktop-mode HID interface (`1A86:AD11`) appears.
 
-在支持的屏幕上，先在 **设备指令** 中发送 `150`，再手动发送 `11` 重启。`150` 只设置下次启动进入 Windows 桌面模式。设备重启并进入桌面模式后，WinUSB 接口会消失，桌面模式 HID 接口（`1A86:AD11`）会出现。
+To resume sending images and video from Studio, select `SWITCH_TO_MONITOR_MODE` immediately below command `150` in the **Device commands** list. This HID action takes no Win207 command number or parameters. Its detail pane works even when the Studio USB display list is empty. Refresh the desktop-mode devices, choose the target by serial number and click **Return to USB display** in that pane. Studio sends one HID report and waits up to 25 seconds for the WinUSB interface with the same serial number to reappear.
 
-要恢复 Studio 图片和视频送屏，在 **设备指令** 左侧列表找到 `150`，选择紧随其后的 `SWITCH_TO_MONITOR_MODE`。此项通过 HID 回切，无需填写 Win207 指令编号或参数。即使 Studio 的 USB 副屏列表为空，仍可打开右侧回切面板，刷新桌面模式设备，按序列号选择目标，再点击 **切回副屏模式**。Studio 只发送一份 HID 报告，等待同序列号的 WinUSB 接口重新出现，最长 25 秒。
+Windows needs the bundled TURZX display driver to use the panel as a monitor in desktop mode. If it is missing, open **Advanced controls** and click **Install desktop-mode driver** in the desktop-mode driver section, then approve the administrator prompt. Installation is required once per machine. To remove the driver, click **Uninstall desktop-mode driver** in the same section.
 
-12.3 寸屏（`1CBE:0123`）的指令收发禁用裸通道及加密指令 `12`、`51`、`52`、`61`、`62`、`125`、`251`、`252`。熄屏可单独发送 `14`，参数填十进制 `0`。指令页中 `14` 的设备原始值范围为 0–80，`13` 只接受 `0`，其余方向在 **媒体** 页设置，由主机旋转画面。
+For the 12.3-inch display (`1CBE:0123`), the command console disables the raw channel and encrypted commands `12`, `51`, `52`, `61`, `62`, `125`, `251` and `252`. To turn off the backlight, send `14` with decimal `0`. In the command console, `14` takes a device value from 0 to 80 and `13` accepts `0`. Use the **Media** page for other orientations so Studio rotates the frames.
 
-普通圆屏（PID `0021`）不提供 Windows 桌面模式。裸通道的灯珠、温度和转速指令适用于独立控制器 `0416:8061`、`0416:8052`，不适用于 Studio 列出的 `1CBE` 屏幕。加密编号 61 和 62 仅供协议参考。十进制输入中，0x61 的字段为泵值和风扇值，251 的字段为泵值和三路风扇值；252 的长度包含帧数、间隔和动画内容。
+The standard round panel (PID `0021`) does not offer Windows desktop mode. Raw LED, temperature and speed commands belong to the standalone `0416:8061` and `0416:8052` controllers; Studio does not send them to displays. Encrypted IDs 61 and 62 are for protocol reference.
 
-## 基础控制和查询
+## Basic control and queries
 
-| 编号 | 名称 | 参数和应答 | Studio 入口 |
+| Number | Name | Arguments and reply | Studio entry |
 | --- | --- | --- | --- |
-| 10 | GET_FIRMWARE_VERSION | 应答 0 应为 10，8–39 为 UTF-8 固件版本，去掉尾部 NUL | 高级控制 · 设备指令 |
-| 11 | RESTART_DEVICE | 头参数全零，请求 512 字节。重启会中断 USB 会话。专用成功码未定义 | 设备指令 |
-| 12 | SHUT_DOWN_DEVICE | 头参数全零，请求 512 字节。请求设备关机，实际行为取决于固件。专用成功码未定义 | 总览查阅 |
-| 13 | SET_DISPLAY_ORIENTATION | 头 8 为 u8，0、1、2、3 对应 0°、90°、180°、270°。其余参数填 0。Studio 会按设备型号结合主机端帧旋转与固件方向。设置结果以实体面板为准，部分固件的 60 回包无法验证方向 | 媒体 · 方向 |
-| 14 | SET_DISPLAY_BRIGHTNESS | 头 8 为 u8，范围 0–100。Studio 在 12.3 寸屏上将亮度百分比换算为 floor(百分比 × 80 ÷ 100)。统一成功码未定义 | 首页 · 屏幕快控 |
-| 15 | SET_VIDEO_FRAME_RATE | 头 8 为 u8，单位帧/秒，Studio 接受 1–60。在写入首个 H.264 块之前设置 | 媒体、实时输入 |
-| 49 | SET_VIDEO_CLOCK_SYNC | 头 8 为 u8，0 禁用视频时钟同步，1 启用。日期时间使用 51 设置 | 总览查阅 |
-| 50 | GET_SUPPLY_VOLTAGE | 无请求参数。应答至少 12 字节，偏移 8–11 为 u32be 供电读数。兼容的 12.3 寸屏以 mV 表示 | 高级控制 · 设备指令 |
-| 51 | SET_DEVICE_CLOCK | 头 8–9 为 u16be 年份，10–15 依次为月、日、时、分、秒和模式，均为 u8。模式 0 禁用、1 启用、2 仅校时。应答 0 回显 51。SDK 使用主机本地时间 | 高级控制 · 设备指令（4.6 寸屏） |
-| 52 | STOP_DEVICE_CLOCK | 头 8 为 0，停止设备时钟层。统一成功码未定义 | 高级控制 · 设备指令（4.6 寸屏） |
-| 60 | GET_ORIENTATION_STATE | 无请求参数。应答至少 10 字节，8 为当前方向，9 为传感器方向，两者各为 u8。裸通道 0x60 用于查询温度。部分固件的两个方向字段可能固定为 0，不能用作手动方向设置的确认 | 设备指令 |
-| 61 | SET_PUMP_SPEED | 加密通道泵速设置，参数和应答布局未指定。兼容的泵及风扇控制使用裸通道 0x61 | 总览查阅 |
-| 62 | GET_PUMP_SPEED | 加密通道泵速查询，应答布局未指定。兼容的泵及风扇转速查询使用裸通道 0x62 | 总览查阅 |
-| 125 | SET_DEVICE_CONFIGURATION | 头 8–14 依次为亮度、启动模式、0、方向、休眠延迟、离线模式、离线时钟方向，每项为 u8。模式和延迟单位取决于固件。Studio 仅在 4.6 寸屏的指令页开放手动输入。亮度 0–100，启动模式 0–2，方向 0–3，离线模式 0–1，其余字段填 0。12.3 寸屏请使用高级控制，固件方向保持 0° | 高级控制 |
-| 150 | SWITCH_TO_DESKTOP_MODE | 头参数全零。设置下次启动进入 Windows 桌面模式，需由用户另发 11 重启。支持情况取决于型号 | 设备指令 |
-| 201 | GET_DEVICE_POSITION_INDEX | 头参数全零。兼容的 SLC 型号在应答 10–11 返回 u16be 泵读数 | 设备指令 |
+| 10 | GET_FIRMWARE_VERSION | Reply is at least 40 bytes. Offset 0 should be 10; 8–39 = UTF-8 firmware version, trailing NUL stripped | Advanced controls · Device commands |
+| 11 | RESTART_DEVICE | Zero-filled header arguments and a 512-byte request. Restart interrupts the USB session. No dedicated success code is specified | Device commands |
+| 12 | SHUT_DOWN_DEVICE | Zero-filled header arguments and a 512-byte request. Requests device shutdown. Behavior depends on firmware. No dedicated success code is specified | Device commands |
+| 13 | SET_DISPLAY_ORIENTATION | header 8 = u8, 0–3 map to 0°, 90°, 180°, 270°; remaining arguments zero. Studio combines host-side frame rotation with firmware orientation according to the model. Check the result on the physical panel. Command 60 may fail to reflect the setting on some firmware | Media · orientation |
+| 14 | SET_DISPLAY_BRIGHTNESS | Header 8 holds a u8 in the range 0–100. Studio converts percentages to floor(percent × 80 ÷ 100) for the 12.3-inch display. No common success code is specified | Media · display controls |
+| 15 | SET_VIDEO_FRAME_RATE | header 8 = u8, frames/second; Studio accepts 1–60. Set before writing the first H.264 block | Media, live input |
+| 49 | SET_VIDEO_CLOCK_SYNC | header 8 = u8; 0 disables video clock sync, 1 enables. Date/time is set with 51 | Device commands |
+| 50 | GET_SUPPLY_VOLTAGE | No request arguments. Reply is at least 12 bytes. Offsets 8–11 contain a u32be supply reading in mV on compatible 12.3-inch firmware | Advanced controls · Device commands |
+| 51 | SET_DEVICE_CLOCK | Header 8–9 holds the year as u16be. Bytes 10–15 hold month, day, hour, minute, second and mode as u8 values. Mode 0 disables the clock, 1 enables it, and 2 sets the time only. Reply byte 0 echoes 51. The SDK uses local host time | Advanced controls (4.6-inch display) · Device commands |
+| 52 | STOP_DEVICE_CLOCK | Header 8 is 0. Stops the device clock layer. No common success code is specified | Advanced controls (4.6-inch display) · Device commands |
+| 60 | GET_ORIENTATION_STATE | no request arguments. Reply ≥ 10 bytes, offset 8 = current orientation, offset 9 = sensor orientation, each u8. Raw channel 0x60 queries temperature. Some firmware returns zero for both fields. The reply alone does not confirm a manual orientation setting | Commands |
+| 61 | SET_PUMP_SPEED | Encrypted pump speed setting. Arguments and reply layout are unspecified. Use raw 0x61 for compatible pump and fan controls | reference |
+| 62 | GET_PUMP_SPEED | Encrypted pump speed query. The reply layout is unspecified. Use raw 0x62 for compatible pump and fan speed queries | reference |
+| 125 | SET_DEVICE_CONFIGURATION | Header 8–14 holds brightness, boot mode, 0, orientation, sleep delay, offline mode and offline clock orientation as u8 values. Mode values and delay units depend on firmware. Studio enables manual entry in the command console for the 4.6-inch model. Brightness is 0–100, startup mode 0–2, orientation 0–3, and offline mode 0–1. Set the remaining fields to 0. For the 12.3-inch model, use Advanced controls, which keeps firmware orientation at 0° | Advanced controls (4.6-inch display) · Device commands |
+| 150 | SWITCH_TO_DESKTOP_MODE | header arguments all zero. Sets Windows desktop mode for the next boot. Send 11 separately to restart. Model support varies | Device commands |
+| 201 | GET_DEVICE_POSITION_INDEX | Zero-filled header arguments. Supported SLC models return a u16be pump reading at reply offsets 10–11 | Commands |
 
-## 图片、视频和图层
+## Images, video and layers
 
-| 编号 | 名称 | 参数和应答 | Studio 入口 |
+| Number | Name | Arguments and reply | Studio entry |
 | --- | --- | --- | --- |
-| 17 | GET_H264_BLOCK_SIZE | 无请求参数。应答至少 12 字节，8–11 为 u32be 字节数。0 使用 198 KiB，Studio 拒绝大于 4 MiB 的块大小 | 设备指令 |
-| 101 | DISPLAY_JPEG | 头 8–11 为 u32be 字节数，USB 偏移 512 起为完整 JPEG。应答状态码未统一定义 | 媒体 |
-| 102 | DISPLAY_PNG_OVERLAY | 头 8–11 为 u32be 字节数，USB 偏移 512 起为完整的 8 位 RGBA PNG。Alpha 由固件合成，实时 PNG 可与 121 交替发送。Studio 指令页会在发送前校验 PNG 块校验和并验证压缩像素数据 | 媒体、实时输入 |
-| 110 | START_LOCAL_H264_PLAYBACK | 头 8–11 为 u32be 路径长度，ASCII 路径从 16 起。SDK 在匹配指令 110 的应答中检查偏移 8 的状态 200。若兼容固件以 `6E C8` 确认且偏移 8 为 0，SDK 用 112 查询播放状态确认。 | 高级控制 · 设备内媒体 |
-| 111 | STOP_LOCAL_H264_PLAYBACK | 头参数全零，停止设备存储中的 H.264 播放。主机推流用 123 停止 | 设备指令 |
-| 112 | GET_LOCAL_H264_PLAYBACK_STATE | 无请求参数。应答至少 9 字节，8 为 u8，0 表示停止，非零表示播放中 | 设备指令 |
-| 113 | DISPLAY_LOCAL_JPEG | 路径布局同 110。SDK 的设备内图片播放要求应答匹配指令 113，且偏移 1 的状态为 200 | 高级控制 · 设备内媒体 |
-| 114 | STOP_LOCAL_JPEG_LOOP | 头参数全零，停止设备内 JPEG 循环。固件未提供可移植的图层清除应答 | 设备指令 |
-| 121 | WRITE_H264_STREAM_BLOCK | 头 8–11 为块长 u32be，12 在末块为 1，其余块为 0。USB 偏移 512 起是 Annex B 数据。应答至少 9 字节，8 为队列深度 u8 | 媒体、实时输入 |
-| 122 | GET_H264_QUEUE_DEPTH | 常规查询头参数全零。应答至少 9 字节，8 为队列深度 u8。同步扩展见下文 | 设备指令 |
-| 123 | STOP_H264_STREAM | 头参数全零。主机停止发送后下发，避免后续数据块重启视频 | 媒体、设备指令 |
+| 17 | GET_H264_BLOCK_SIZE | no request arguments. Reply ≥ 12 bytes, 8–11 = u32be byte count. 0 uses 198 KiB; Studio rejects block sizes above 4 MiB | Commands |
+| 101 | DISPLAY_JPEG | header 8–11 = u32be byte count, complete JPEG from USB offset 512. Reply status code not uniformly defined | Media |
+| 102 | DISPLAY_PNG_OVERLAY | header 8–11 = u32be byte count, complete 8-bit RGBA PNG from USB offset 512. Alpha is composited by firmware. Live PNGs may alternate with 121. Studio validates PNG chunk checksums and compressed pixel data before sending from the command console | Media, live input |
+| 110 | START_LOCAL_H264_PLAYBACK | Header 8–11 holds the path length as u32be. The ASCII path starts at offset 16. The SDK checks for status 200 at offset 8 of the matching command 110 reply. If the reply starts with `6E C8` (command 110 echoed, 200 at offset 1) and offset 8 is zero, the SDK queries 112 for the playback state and requires a non-zero state | Advanced controls · on-device media |
+| 111 | STOP_LOCAL_H264_PLAYBACK | header arguments all zero, stops H.264 playback from device storage. Host streaming stops with 123 | Commands |
+| 112 | GET_LOCAL_H264_PLAYBACK_STATE | no request arguments. Reply ≥ 9 bytes, 8 = u8; 0 = stopped, non-zero = playing | Commands |
+| 113 | DISPLAY_LOCAL_JPEG | Uses the path layout of 110. SDK on-device image playback expects a matching command 113 reply with status 200 at offset 1 | Advanced controls · on-device media |
+| 114 | STOP_LOCAL_JPEG_LOOP | header arguments all zero, stops the device JPEG loop. Firmware defines no common layer-clear reply | Commands |
+| 121 | WRITE_H264_STREAM_BLOCK | header 8–11 = block length u32be, 12 = 1 on the final block else 0. Annex B data from USB offset 512. Reply ≥ 9 bytes, 8 = queue depth u8 | Media, live input |
+| 122 | GET_H264_QUEUE_DEPTH | normal query, header arguments all zero. Reply ≥ 9 bytes, 8 = queue depth u8. Sync extension below | Commands |
+| 123 | STOP_H264_STREAM | header arguments all zero. Sent after the host stops sending, so later blocks do not restart video | Media, Commands |
 
-视频流程为停止旧流、设置帧率、读取块大小、等待队列深度降至 1 或更低，再逐块发送 Annex B 码流。文件传输的块间隔约 30 毫秒，实时编码流按块大小和缓冲时间发送。队列深度大于 3 时通常等待降至 2 或更低。单次发送完成后设备继续消费剩余队列。实时图层可在完整请求与应答之间插入 102，背景仍由 121 持续传输。122 同步扩展，头 8–15 是大端 64 位同步时间（毫秒），16–19 是大端 32 位总帧数。Studio 使用普通查询。
+An ordinary video transfer proceeds in this order: stop existing playback and the clock layer (123, 52), set the frame rate (15), read the block size (17), wait for the queue depth to reach 1 or less, then send Annex B data block by block (121). File input waits about 30 ms between blocks. Live input sends smaller blocks and briefly waits to merge frames, reducing per-block reply overhead. When the queue depth exceeds 3, the SDK waits for it to fall to 2 or less before continuing. After the host stops sending, the display keeps playing the blocks already received.
 
-## 文件、照明与制造检查
+When the display supports layer composition, 102 (PNG foreground) and 121 (H.264 background) can alternate in one session, completing one request/reply pair before the next. The optional 122 synchronization extension stores a big-endian 64-bit sync time in milliseconds at header 8–15 and a big-endian 32-bit total frame count at 16–19. Studio uses the plain query only and does not use this extension.
 
-| 编号 | 名称 | 参数或已知用途 | Studio 入口 |
+## Files, lighting and manufacturing checks
+
+| Number | Name | Arguments or known use | Studio entry |
 | --- | --- | --- | --- |
-| 38 | CREATE_DEVICE_FILE | 路径布局同 110。文件创建状态 200 位于应答偏移 8 | 设备指令 |
-| 39 | WRITE_DEVICE_FILE_BLOCK | 头 8–11 为 u32be 缓冲容量，12–15 为 u32be 有效长度，16 为 u8 末块标志。Studio 选文件时使用 1 MiB 缓冲并填写末块有效长度 | 设备指令 |
-| 40 | WRITE_DEVICE_FILE | 头 8–11 为 u32be 路径长度，12–15 为 u32be 文件长度，ASCII 路径从 16 起，USB 偏移 512 起为文件内容。Studio 接收小于 100 KiB 的文件 | 设备指令 |
-| 42 | DELETE_DEVICE_PATH | 删除文件或目录。头 8–11 为 u32be 路径长度，ASCII 路径从 16 起。Studio 要求确认目标路径，并拒绝以斜杠结尾的路径（含 `/`）。可刷新目录核对结果。SDK 删除时核对应答的指令编号。 | 高级控制 · 设备内媒体 |
-| 98 | GET_DEVICE_FILE_SIZE | 头 8–11 为 u32be 路径长度，ASCII 路径从 16 起。应答至少 12 字节，偏移 8–11 为 u32le 文件大小，单位为字节 | 设备指令 |
-| 99 | LIST_DEVICE_DIRECTORY | 路径布局同 98。SDK 最多读取 20 个应答，从 UTF-8 列表中提取 `file:` 后以 `/` 分隔的文件名。如应答回显目录，SDK 会核对路径。部分 12.3 寸固件使用 `result:dir:file:` 开头，省略目录路径。读取在列表完整或收到明确的空目录应答时结束。`result:dir:file:` 表示已有目录为空，`nodir-createdone` 表示新建了空目录，`result:nodir-createfailed` 表示目录创建失败 | 高级控制 · 设备内媒体 |
-| 100 | GET_STORAGE_CAPACITY | 应答 8、12、16 为 SD 总量、已用、可用。20、24、28 为 Flash 对应字段。字段为小端 32 位，单位 KiB | 高级控制 · 设备指令 |
-| 246 | TEST_USB_THROUGHPUT | USB 写入吞吐量检查。现有资料记录了零填充缓冲区，其他请求字段未指定 | 仅协议参考，Studio 不提供预设 |
-| 251 | SYNC_PUMP_AND_FAN_OUTPUTS | 从明文 8 起写入 16 字节。参数内 0–2 为 FF 0F A1，4–5 为 u16be 泵值，6–8 为三路风扇值 | 总览查阅 |
-| 252 | WRITE_RGB_ANIMATION | 头 12–15 为载荷长度 u32be。USB 偏移 512–513 为总帧数 u16be，514 为帧间隔 u8，515 起为动画数据。间隔单位和帧编码由固件定义 | 总览查阅 |
-| 253 | RUN_FACTORY_H264_TEST | 制造环节的 H.264 检查。请求参数布局未指定 | 仅协议参考，Studio 不提供预设 |
+| 38 | CREATE_DEVICE_FILE | Uses the path layout of 110. File creation status 200 is at reply offset 8 | Device commands |
+| 39 | WRITE_DEVICE_FILE_BLOCK | Header 8–11 holds buffer capacity as u32be, 12–15 holds valid length as u32be, and 16 holds the final-block flag as u8. Studio's file picker uses a 1 MiB buffer and supplies the valid length of the final block | Device commands |
+| 40 | WRITE_DEVICE_FILE | Header 8–11 holds the path length as u32be, 12–15 holds the file length as u32be, and the ASCII path starts at 16. File contents start at USB offset 512. Studio accepts files under 100 KiB | Device commands |
+| 42 | DELETE_DEVICE_PATH | Deletes a file or directory. Header 8–11 holds the path length as u32be and the ASCII path starts at 16. Studio asks you to confirm the target path and rejects paths ending in a slash, including `/`. Refresh the directory to confirm removal. The SDK checks the command number in the deletion reply | Advanced controls · on-device media |
+| 98 | GET_DEVICE_FILE_SIZE | Header 8–11 holds the path length as u32be, and the ASCII path starts at 16. Reply is at least 12 bytes. Offsets 8–11 hold the file size in bytes as u32le | Device commands |
+| 99 | LIST_DEVICE_DIRECTORY | Uses the path layout of 98. The SDK reads up to 20 replies and extracts slash-separated names after `file:` from the UTF-8 listing. The SDK checks the directory when the reply echoes it. Some 12.3-inch firmware starts the listing with `result:dir:file:` and omits the path. Reading stops when the listing is complete or the device reports an empty directory. `result:dir:file:` indicates an existing empty directory, `nodir-createdone` indicates a newly created empty directory, and `result:nodir-createfailed` indicates creation failed | Advanced controls · on-device media |
+| 100 | GET_STORAGE_CAPACITY | Reply is at least 32 bytes. Offsets 8, 12 and 16 = SD total, used and free; offsets 20, 24 and 28 = Flash equivalents. Fields are little-endian 32-bit, in KiB | Advanced controls · Device commands |
+| 246 | TEST_USB_THROUGHPUT | USB write throughput check. Known requests use a zero-filled buffer; other fields are unspecified | protocol reference only; no Studio preset |
+| 251 | SYNC_PUMP_AND_FAN_OUTPUTS | A 16-byte argument block starts at plaintext offset 8. Within the block, offsets 0–2 are FF 0F A1, offset 3 is 0, 4–5 hold the pump value as u16be, 6–8 hold three fan values, and 9–15 are zero | Device commands |
+| 252 | WRITE_RGB_ANIMATION | header 8–11 zero, 12–15 = payload length u32be. USB offset 512–513 = total frames u16be, 514 = frame interval u8, animation data from 515. Interval unit and frame encoding are firmware-defined | Device commands |
+| 253 | RUN_FACTORY_H264_TEST | Manufacturing H.264 check. The request argument layout is unspecified | protocol reference only; no Studio preset |
 
-## 裸通道
+## Raw channel
 
-裸通道使用同一端点，但请求是 64 字节缓冲，不带 DES 封包。编号放在请求 0。
+The raw channel uses the same endpoints but the request is a 64-byte buffer without a DES packet. The number goes at request 0.
 
-| 编号 | 名称 | 请求和应答 | Studio 入口 |
+| Number | Name | Request and reply | Studio entry |
 | --- | --- | --- | --- |
-| 0x11 | WRITE_LED_PIXEL_BLOCK | 请求 1 为 u8 LED 起始索引，RGB 数据从 4 起。一种分块布局使用索引 0、15、30，对应数据最多 45、45、15 字节，余下填 0 | 总览查阅 |
-| 0x60 | GET_COOLING_TEMPERATURES | 请求 1–63 填 0。应答至少 3 字节，1、2 是泵和风扇温度 u8，单位 °C | 设备指令 |
-| 0x61 | SET_COOLING_SPEEDS | 请求 1–2 和 3–4 分别为 u16be 泵与风扇目标值，5–63 填 0。兼容实现采用 3500 作为原始满量程 | 总览查阅 |
-| 0x62 | GET_COOLING_SPEEDS | 请求 1–63 填 0。应答至少 5 字节，1–2、3–4 为泵和风扇转速 u16be。数值换算以型号为准 | 设备指令 |
+| 0x11 | WRITE_LED_PIXEL_BLOCK | Request byte 1 holds the LED start index as u8, followed by RGB data from offset 4. A compatible block layout uses start indices 0, 15 and 30 with up to 45, 45 and 15 data bytes respectively. Unused bytes are zero | reference |
+| 0x60 | GET_COOLING_TEMPERATURES | request 1–63 zero-filled. Reply ≥ 3 bytes, 1 and 2 = pump and fan temperature u8 in °C | reference |
+| 0x61 | SET_COOLING_SPEEDS | Request offsets 1–2 and 3–4 hold pump and fan targets as u16be. Offsets 5–63 are zero. The compatible scale uses 3500 as the full-scale raw value | reference |
+| 0x62 | GET_COOLING_SPEEDS | request 1–63 zero-filled. Reply ≥ 5 bytes, 1–2 and 3–4 = pump and fan speed u16be. Conversion is model-dependent | reference |
 
-## 封包和应答示例
+## Packet and reply examples
 
-以下为加密前头部，时间戳固定为 1 毫秒。每个加密头补零至 500 字节，再按前文处理。
+Below are pre-encryption headers with the timestamp fixed at 1 ms. Each encrypted header is zero-padded to 500 bytes, then encrypted as described in “Encrypted channel packet”.
 
-| 操作 | 明文头起始字节 | 解释 |
+| Operation | Plaintext header leading bytes | Explanation |
 | --- | --- | --- |
-| 读取版本 | `0A 00 1A 6D 01 00 00 00` | 十进制 10 对应 0A，参数均为 0 |
-| 设置亮度 60 | `0E 00 1A 6D 01 00 00 00 3C` | 偏移 8 的 3C 是十进制 60 |
-| 旋转 180° | `0D 00 1A 6D 01 00 00 00 02` | 偏移 8 为方向代码 2 |
-| 发送 1024 字节 PNG | `66 00 1A 6D 01 00 00 00 00 00 04 00` | 长度按大端写入，USB 请求共 1536 字节 |
-| 发送 512 字节 H.264 末块 | `79 00 1A 6D 01 00 00 00 00 00 02 00 01` | 偏移 12 为末块标志 |
+| read version | `0A 00 1A 6D 01 00 00 00` | decimal 10 = 0A, arguments all 0 |
+| set brightness 60 | `0E 00 1A 6D 01 00 00 00 3C` | offset 8 = 3C = decimal 60 |
+| rotate 180° | `0D 00 1A 6D 01 00 00 00 02` | offset 8 = orientation code 2 |
+| send 1024-byte PNG | `66 00 1A 6D 01 00 00 00 00 00 04 00` | length written big-endian; USB request totals 1536 bytes |
+| send 512-byte final H.264 block | `79 00 1A 6D 01 00 00 00 00 00 02 00 01` | offset 12 = final-block flag |
 
-应答解码示例：
+Reply decoding examples:
 
-- 17 应答 8–11 为 `00 03 18 00` 时，H.264 块长为 202752 字节，即 198 KiB。
-- 100 应答 8–11 为 `00 10 00 00` 时，SD 总容量字段为 4096 KiB。此字段为小端。
-- 裸通道温度查询发送 `60` 加 63 个零字节。应答偏移 1、2 若为 `23 28`，对应 35 °C、40 °C。
-- 裸通道转速应答偏移 1–4 若为 `06 D6 03 E8`，对应原始值 1750 和 1000。
+- When 17 reply 8–11 = `00 03 18 00`, the H.264 block length is 202752 bytes = 198 KiB.
+- When 100 reply 8–11 = `00 10 00 00`, the SD total field is 4096 KiB. This field is little-endian.
+- A raw temperature query sends `60` plus 63 zero bytes. If reply offsets 1, 2 = `23 28`, that is 35 °C and 40 °C.
+- A raw speed reply with offsets 1–4 = `06 D6 03 E8` corresponds to raw values 1750 and 1000.
 
-## 可直接调用的示例
+## Directly callable examples
 
-在源码仓库根目录运行以下 CLI 命令。先用 `list` 获取设备索引。SDK ZIP 中可运行 `dotnet run --project examples/SdkDiscover` 枚举设备。
+Run these CLI commands from the source repository root. Use `list` first to get device indices. To enumerate devices from the SDK ZIP, run `dotnet run --project examples/SdkDiscover`.
 
 ```powershell
 dotnet run --project src/TURZX.WinUsbDisplay.Cli -- list
@@ -173,23 +185,23 @@ dotnet run --project src/TURZX.WinUsbDisplay.Cli -- video 0 motion.mp4 24 --loop
 dotnet run --project src/TURZX.WinUsbDisplay.Cli -- stop 0
 ```
 
-SDK 可在同一个会话中调用设备方法。诊断返回原始应答，按上表解释。
+The SDK can call device methods within one session. Diagnostics return raw replies; interpret them with the tables above.
 
 ```csharp
 using TURZX.WinUsbDisplay;
 
 var devices = DisplayDevice.Discover(DisplaySettings.InterfaceGuid);
 if (devices.Count == 0)
-    throw new InvalidOperationException("未找到 Win207 屏幕。");
+    throw new InvalidOperationException("No Win207 display found.");
 using var screen = devices[0].Open(DisplaySettings.ReadCommandKey());
 Console.WriteLine(screen.ReadFirmwareVersion());
 screen.SetRotation(2);
 byte[] status = screen.ReadDiagnostic(60);
 if (status.Length >= 10)
-    Console.WriteLine($"方向 {status[8]}，传感器 {status[9]}");
+    Console.WriteLine($"orientation {status[8]}, sensor {status[9]}");
 byte[] temperatures = screen.ReadDiagnostic(0x60, raw: true);
 ```
 
-参考资料：[Microsoft WinUSB 指南](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/using-winusb-api-to-communicate-with-a-usb-device)，[FFmpeg 格式文档](https://ffmpeg.org/ffmpeg-formats.html)。
+References: [Microsoft WinUSB guide](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/using-winusb-api-to-communicate-with-a-usb-device), [FFmpeg format documentation](https://ffmpeg.org/ffmpeg-formats.html).
 
-直接引用设备控制 DLL 的项目配置及完整示例见 [DLL 开发指南](developer-guide.md)。
+Project configuration and full examples for referencing the device-control DLL directly are in the [DLL developer guide](developer-guide.md).

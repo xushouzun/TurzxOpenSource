@@ -43,7 +43,7 @@ public partial class MainWindow
 
         if (SelectedNativeTheme is not null)
         {
-            bool ready = File.Exists(NativeThemePath.Text.Trim());
+            bool ready = File.Exists(nativeThemePath);
             Send.IsEnabled = !busy && !selectingCaptureRegion && ready && !nativeThemePlaying;
             if (Stop is not null)
                 Stop.IsEnabled = !closing && nativeThemePlaying;

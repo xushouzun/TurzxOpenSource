@@ -3,7 +3,7 @@ description: Share on-device results or reproduce a device issue
 body:
   - type: markdown
     attributes:
-      value: Remove packet keys and serial numbers from logs.
+      value: Remove device serial numbers and private paths from logs.
   - type: input
     id: hardware
     attributes:

@@ -16,7 +16,7 @@ public class PacketCommandValidationTests
 
     [Theory]
     [InlineData("")]
-    [InlineData(".en")]
+    [InlineData(".zh-CN")]
     [InlineData(".ja")]
     [InlineData(".ko")]
     public void BundledProtocolDescribesEachCommandPreset(string languageSuffix)

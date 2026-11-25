@@ -128,13 +128,13 @@ public class VideoInputTests
     }
 
     [Fact]
-    public void FfmpegCanUseTheEnvironmentWhenItsSettingsFileIsLocked()
+    public void FfmpegFallsBackWhenItsSettingsFileIsLocked()
     {
         string path = Path.GetTempFileName();
         try
         {
             using var held = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            Assert.Equal("ffmpeg-from-environment", VideoConverter.ResolveExecutable(path, "ffmpeg-from-environment"));
+            Assert.False(string.IsNullOrWhiteSpace(VideoConverter.ResolveExecutable(path)));
         }
         finally
         {

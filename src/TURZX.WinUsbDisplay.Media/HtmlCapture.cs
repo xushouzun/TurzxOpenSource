@@ -144,7 +144,6 @@ public sealed class HtmlCapture : IAsyncDisposable
         startup.CancelAfter(TimeSpan.FromSeconds(20));
         var token = startup.Token;
         string executable = browserStart?.FileName ?? ResolveBrowserExecutable(
-            Environment.GetEnvironmentVariable("WINUSB_DISPLAY_BROWSER"),
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
@@ -152,18 +151,13 @@ public sealed class HtmlCapture : IAsyncDisposable
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true
         };
-        start.Environment.Remove("WINUSB_DISPLAY_COMMAND_KEY");
         foreach (string arg in new[] { "--headless=new", "--disable-extensions", "--no-first-run", "--no-default-browser-check", "--enable-logging=stderr",
             "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0",
             $"--user-data-dir={profile.FullName}" })
             start.ArgumentList.Add(arg);
-        if (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_BROWSER_GPU") != "1")
-            start.ArgumentList.Add("--disable-gpu");
+        start.ArgumentList.Add("--disable-gpu");
         if (fastCapture)
             start.ArgumentList.Add("--disable-frame-rate-limit");
-        if (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_BROWSER_RASTER_THREADS") is { } rasterThreads
-            && int.TryParse(rasterThreads, out int count) && count is >= 1 and <= 8)
-            start.ArgumentList.Add($"--num-raster-threads={count}");
         start.ArgumentList.Add("about:blank");
         browser = Process.Start(browserStart ?? start) ?? throw new IOException("Could not start the headless browser.");
 
@@ -242,11 +236,8 @@ public sealed class HtmlCapture : IAsyncDisposable
     }
 
     /// <summary>查找系统级和当前用户安装的 Chrome 或 Edge。</summary>
-    internal static string ResolveBrowserExecutable(string? configured, params string[] installationRoots)
+    internal static string ResolveBrowserExecutable(params string[] installationRoots)
     {
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured;
-
         foreach (string browser in new[] { Path.Combine("Google", "Chrome", "Application", "chrome.exe"),
             Path.Combine("Microsoft", "Edge", "Application", "msedge.exe") })
         {
@@ -257,7 +248,7 @@ public sealed class HtmlCapture : IAsyncDisposable
             }
         }
 
-        throw new FileNotFoundException("Chrome or Edge was not found. Install a browser or set WINUSB_DISPLAY_BROWSER to its executable.");
+        throw new FileNotFoundException("Chrome or Edge was not found. Install a browser and try again.");
     }
 
     /// <summary>连接页面 WebSocket 并启动后台接收循环。</summary>
@@ -326,15 +317,22 @@ public sealed class HtmlCapture : IAsyncDisposable
         TimeSpan timeout = canRepeat ? repeatAfter!.Value : TimeSpan.FromSeconds(10);
         try
         {
-            lastFrame = await receive.WaitAsync(timeout, cancellation).ConfigureAwait(false);
-        }
-        catch (TimeoutException) when (canRepeat)
-        {
-            // 等待超时只影响本次调用，后续仍可读取同一个推帧任务。
-            cancellation.ThrowIfCancellationRequested();
-            if (!receive.IsCompleted)
-                return lastFrame;
-            lastFrame = await receive.ConfigureAwait(false);
+            // 使用非异常的等待，避免静态页面按帧率反复产生首次异常。
+            Task completed = await Task.WhenAny(receive, Task.Delay(timeout, cancellation)).ConfigureAwait(false);
+            if (completed == receive)
+            {
+                lastFrame = await receive.ConfigureAwait(false);
+            }
+            else
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (receive.IsCompleted)
+                    lastFrame = await receive.ConfigureAwait(false);
+                else if (canRepeat)
+                    return lastFrame;
+                else
+                    throw new TimeoutException("The browser did not return a frame within 10 seconds.");
+            }
         }
         finally
         {

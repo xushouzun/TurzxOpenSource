@@ -74,11 +74,10 @@ public static class VideoConverter
         }
     }
 
-    /// <summary>从配置和环境解析用于媒体处理的 FFmpeg 可执行文件。</summary>
-    internal static string ResolveExecutable() =>
-        ResolveExecutable(ExecutableConfigPath, Environment.GetEnvironmentVariable("WINUSB_DISPLAY_FFMPEG"));
+    /// <summary>从配置解析用于媒体处理的 FFmpeg 可执行文件。</summary>
+    internal static string ResolveExecutable() => ResolveExecutable(ExecutableConfigPath);
 
-    internal static string ResolveExecutable(string configPath, string? environment)
+    internal static string ResolveExecutable(string configPath)
     {
         try
         {
@@ -91,11 +90,8 @@ public static class VideoConverter
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // 无法读取偏好文件时，仍可使用环境变量、随包程序或 PATH。
+            // 无法读取偏好文件时，仍可使用随包程序或 PATH。
         }
-
-        if (environment is { Length: > 0 })
-            return environment;
 
         string adjacent = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
         return File.Exists(adjacent) ? adjacent : "ffmpeg";
@@ -104,7 +100,6 @@ public static class VideoConverter
     /// <summary>启动 FFmpeg 并将找不到程序的错误转换为专用异常。</summary>
     internal static Process StartFfmpeg(ProcessStartInfo start)
     {
-        start.Environment.Remove("WINUSB_DISPLAY_COMMAND_KEY");
         try
         {
             return Process.Start(start) ?? throw new IOException("Could not start FFmpeg.");

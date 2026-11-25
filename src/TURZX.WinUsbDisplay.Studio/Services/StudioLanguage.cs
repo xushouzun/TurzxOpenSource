@@ -25,8 +25,8 @@ internal static class StudioLanguage
     /// <summary>列出 Studio 当前提供的界面语言。</summary>
     internal static IReadOnlyList<Option> Options { get; } = Array.AsReadOnly<Option>(
     [
-        new(DefaultLanguage, "简体中文", ""),
-        new(EnglishLanguage, "English", ".en"),
+        new(DefaultLanguage, "简体中文", ".zh-CN"),
+        new(EnglishLanguage, "English", ""),
         new("ja-JP", "日本語", ".ja"),
         new("ko-KR", "한국어", ".ko")
     ]);

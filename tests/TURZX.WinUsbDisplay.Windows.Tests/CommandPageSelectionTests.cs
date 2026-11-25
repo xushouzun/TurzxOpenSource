@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Documents;
 using System.Windows.Threading;
 using TURZX.WinUsbDisplay.Studio;
 using Xunit;
@@ -57,6 +58,18 @@ public class CommandPageSelectionTests
             window.OpenDocumentationLink("https://example.invalid/documentation",
                 _ => throw new System.ComponentModel.Win32Exception(1155));
             Assert.Equal(StudioLanguage.T("CouldNotOpenDocumentationLink"), window.Status.Text);
+        });
+    }
+
+    [Fact]
+    public void SerialProtocolDocumentIsSelectable()
+    {
+        WithStudioWindow(window =>
+        {
+            Assert.Equal(3, window.DocumentationChoice.Items.Count);
+            window.DocumentationChoice.SelectedIndex = 1;
+            var text = new TextRange(window.ProtocolText.Document.ContentStart, window.ProtocolText.Document.ContentEnd).Text;
+            Assert.Contains("1A86:5722", text);
         });
     }
 

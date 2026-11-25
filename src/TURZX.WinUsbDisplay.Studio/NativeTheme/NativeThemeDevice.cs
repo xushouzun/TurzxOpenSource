@@ -4,6 +4,9 @@ using TURZX.WinUsbDisplay.Studio.NativeTheme;
 
 namespace TURZX.WinUsbDisplay.Studio;
 
+/// <summary>原生主题下拉框的选项。</summary>
+internal sealed record NativeThemeOption(string Name, string Path);
+
 /// <summary>表示 3.5 寸 CH340 原生主题设备。</summary>
 /// <param name="PortName">CH340 串口名，例如 COM5。</param>
 /// <param name="InstanceId">Windows USB 实例 ID。</param>
@@ -147,7 +150,6 @@ internal sealed class NativeThemePlayer : IDisposable
                 next.SetRotation(RotationFor(document.IsLandscape, invert), frame.Width, frame.Height);
                 Thread.Sleep(500);
                 next.SetBrightness(brightness);
-                SaveSentFrame(frame);
                 next.SendFrame(frame);
             }
             catch
@@ -197,25 +199,6 @@ internal sealed class NativeThemePlayer : IDisposable
     /// <summary>按原项目规则计算方向：横屏默认 2，竖屏默认 0，反向再加 1。</summary>
     private static int RotationFor(bool landscape, bool invert) =>
         ((landscape ? 2 : 0) + (invert ? 1 : 0)) % 4;
-
-    /// <summary>送屏前按需保存实际发送的帧，便于与实物屏幕比对。</summary>
-    internal static void SaveSentFrame(System.Drawing.Bitmap frame)
-    {
-        if (Environment.GetEnvironmentVariable("WINUSB_DISPLAY_NATIVE_THEME_SEND_DIR") is not { Length: > 0 } directory)
-            return;
-
-        try
-        {
-            Directory.CreateDirectory(directory);
-            frame.Save(Path.Combine(directory, $"native-theme-{DateTime.Now:yyyyMMdd-HHmmss-fff}.png"),
-                System.Drawing.Imaging.ImageFormat.Png);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException
-            or System.Runtime.InteropServices.ExternalException)
-        {
-            // 诊断图保存失败不应打断送屏。
-        }
-    }
 
     /// <summary>关闭串口，停止当前播放。</summary>
     internal void Stop()

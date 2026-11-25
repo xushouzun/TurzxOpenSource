@@ -61,11 +61,10 @@ public static class LiveVideoEncoder
             : ["-f", "image2pipe", "-vcodec", jpegInput ? "mjpeg" : "png"];
         foreach (string argument in inputArguments)
             start.ArgumentList.Add(argument);
-        string? requestedThreads = Environment.GetEnvironmentVariable("WINUSB_DISPLAY_ENCODER_THREADS");
         // 大画布用四线程减轻编码管道积压。较小画布用两线程，为并发捕捉和合成留出 CPU 时间。
         bool largeCanvas = (outputCanvas ?? rawInputCanvas) is { } encodingCanvas
             && (long)encodingCanvas.Width * encodingCanvas.Height >= 720L * 1920 && Environment.ProcessorCount >= 4;
-        string encodingThreads = requestedThreads is "1" or "2" or "4" ? requestedThreads : largeCanvas ? "4" : "2";
+        string encodingThreads = largeCanvas ? "4" : "2";
         foreach (string argument in new[] { "-i", "pipe:0",
             "-an", "-filter_threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
             "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", buffer, "-threads", encodingThreads,

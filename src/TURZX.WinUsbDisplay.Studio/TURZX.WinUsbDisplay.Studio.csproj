@@ -11,11 +11,12 @@
     <Resource Include="Assets/Studio.ico" />
     <InternalsVisibleTo Include="TURZX.WinUsbDisplay.Windows.Tests" />
     <EmbeddedResource Include="Localization/*.json" LogicalName="Studio.Localization.%(Filename)%(Extension)" />
-    <None Include="../../docs/developer-guide*.md;../../docs/win207-protocol*.md"
+    <None Include="../../docs/developer-guide*.md;../../docs/win207-protocol*.md;../../docs/serial-protocol*.md"
           Link="docs/%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="Scenes/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="NativeThemes/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Driver/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <ProjectReference Include="../TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj" />
     <ProjectReference Include="../TURZX.WinUsbDisplay.Media/TURZX.WinUsbDisplay.Media.csproj" />

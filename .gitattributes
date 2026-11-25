@@ -1,0 +1,16 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.mp4 binary
+*.data binary
+*.dll binary
+*.exe binary
+*.pdb binary
+*.cat binary
+*.sys binary
+*.inf text eol=crlf

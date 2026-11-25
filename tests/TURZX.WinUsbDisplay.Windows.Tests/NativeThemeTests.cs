@@ -41,6 +41,10 @@ public class NativeThemeTests
                     Assert.True(window.Rotation.IsEnabled);
                     Assert.Equal(Visibility.Collapsed, window.Rotation90.Visibility);
                     Assert.Equal(Visibility.Collapsed, window.Rotation270.Visibility);
+                    Assert.True(window.NativeThemeChoice.Items.Count >= 1);
+                    Assert.NotNull(window.NativeThemeChoice.SelectedItem);
+                    Assert.Equal(Visibility.Collapsed, window.AdvancedNav.Visibility);
+                    Assert.Equal(Visibility.Collapsed, window.CommandsNav.Visibility);
                 }
                 finally
                 {

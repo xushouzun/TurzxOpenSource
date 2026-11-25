@@ -1,18 +1,18 @@
-# TURZX WinUsbDisplay DLL 开发指南
+# TURZX WinUsbDisplay DLL developer guide
 
-`TURZX.WinUsbDisplay.dll` 是 Windows 上的 Win207 设备控制类库，目标框架为 `net10.0`。它使用 Windows 自带的 SetupAPI 和 WinUSB，无 NuGet 包依赖。设备需要安装相应的 WinUSB 驱动。
+`TURZX.WinUsbDisplay.dll` is a Win207 device-control library for Windows targeting `net10.0`. It uses the SetupAPI and WinUSB that ship with Windows and has no NuGet package dependencies. The device needs its WinUSB driver installed.
 
-## 1. 构建和引用
+## 1. Build and reference
 
-从仓库对应版本的 Releases 下载 `TURZX-WinUsbDisplay-SDK.zip`。解压后在包根目录运行 `dotnet run --project examples/SdkDiscover` 可枚举设备。包内 `lib` 目录包含设备 DLL、可选媒体 DLL 及各自的 XML API 文档。也可以从源码构建。
+Download `TURZX-WinUsbDisplay-SDK.zip` from the matching repository release. Extract it and run `dotnet run --project examples/SdkDiscover` from the archive root to enumerate devices. The `lib` directory includes the device and optional media DLLs, each with its XML API documentation. You can also build from source.
 
-只构建设备控制 DLL：
+Build only the device-control DLL:
 
 ```powershell
 dotnet build src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj -c Release
 ```
 
-将生成的 `TURZX.WinUsbDisplay.dll` 复制到消费项目的 `lib` 目录。可把同目录的 `TURZX.WinUsbDisplay.xml` 一并复制，用于 IntelliSense。消费项目只需要引用这个 DLL 即可枚举设备、读取固件和设置屏幕。桌面端、CLI、FFmpeg 和浏览器均为可选组件。
+Copy the produced `TURZX.WinUsbDisplay.dll` into the consuming project's `lib` directory. You may also copy `TURZX.WinUsbDisplay.xml` from the same directory for IntelliSense. The consuming project only needs to reference this DLL to enumerate devices, read firmware and configure the display. The desktop app, CLI, FFmpeg and browser are all optional components.
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -29,11 +29,11 @@ dotnet build src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj -c Release
 </Project>
 ```
 
-源码开发可以使用 `ProjectReference` 指向 `src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj`。Studio 和 CLI 分别引用设备 SDK 和可选媒体库。后者编译为 `TURZX.WinUsbDisplay.Media.dll`，其公开类型位于 `TURZX.WinUsbDisplay.Media` 命名空间。使用媒体库时同时引用两份 DLL。
+For source development use a `ProjectReference` to `src/TURZX.WinUsbDisplay/TURZX.WinUsbDisplay.csproj`. Studio and the CLI both reference the device SDK; add the media library when you need media processing. The media library builds as `TURZX.WinUsbDisplay.Media.dll`, whose public types live in the `TURZX.WinUsbDisplay.Media` namespace. Reference both DLLs when using the media library.
 
-## 2. 第一次连接
+## 2. First connection
 
-从固件维护者获得对应设备的 8 字节命令封包参数。使用环境变量的应用在启动前将 `WINUSB_DISPLAY_COMMAND_KEY` 设为对应的 16 位十六进制字符串。也可从应用自己的配置读取这 8 字节，直接传给 `device.Open(key)`。
+The command key is built in; `DisplaySettings.ReadCommandKey()` returns a copy of it. `device.Open` also accepts a custom 8-byte key.
 
 ```csharp
 using System.Security.Cryptography;
@@ -55,7 +55,7 @@ try
     Console.WriteLine(screen.ReadFirmwareVersion());
     screen.SetBrightness(60);
     screen.SetRotation(0);
-    // 使用完整的 8 位 RGBA PNG，且文件不超过 950,000 字节。
+    // Use a complete 8-bit RGBA PNG no larger than 950,000 bytes.
     screen.ShowImage(File.ReadAllBytes("artwork.png"));
 }
 finally
@@ -64,60 +64,69 @@ finally
 }
 ```
 
-建议在应用里以 `DisplayDevice.Path` 保留当前连接目标，列表索引只用于本次枚举。若重新枚举后找不到该路径，要求重新选设备。驱动注册了自定义接口 GUID 时，可以将其直接传入 `Discover`，或设置 `WINUSB_DISPLAY_INTERFACE_GUID`。
+Keep the current connection target in your application as `DisplayDevice.Path`; list indices are only valid for that enumeration. If the path is missing after re-enumerating, ask the user to reselect the device. If the driver registers a custom interface GUID, pass it directly to `Discover` or set `InterfaceGuid` in the Studio settings file.
 
-## 3. API 和输入
+## 3. API and inputs
 
-| API | 用途及输入 |
+| API | Purpose and inputs |
 | --- | --- |
-| `DisplayDevice.Discover(guid)` | 枚举已知型号，返回接口路径和原生宽高。找不到设备时返回空列表 |
-| `device.Open(key)` | 打开会话。参数为 8 字节。会话持有自己的参数副本，释放时清零 |
-| `ReadFirmwareVersion()` | 读取可验证的固件版本应答 |
-| `SetBrightness(percent)` | 0–100。12.3 寸自动应用其亮度上限 |
-| `SetRotation(quarterTurns)` | 0–3 对应 0°、90°、180°、270°。应在停止当前视频后调整 |
-| `ShowImage(bytes)` | 传入不超过 950,000 字节的完整 JPEG 或 8 位 RGBA PNG。发送前停止流式视频和时钟层 |
-| `ShowOverlay(png)` | 传入不超过 950,000 字节的完整 8 位 RGBA PNG，保留正在传输的 H.264 背景。透明区域由固件合成 |
-| `PlayVideo(stream, fps, loop, cancellation, onStarted)` | 可读的 Annex B H.264 流。循环播放要求流可定位。调用会阻塞，适合在后台线程执行。可选回调在首块应答后触发。在读取期间取消后，请用新流重试，因为原流的操作可能尚未结束。 |
-| `SetFrameRate(fps)` | 单独设置 1–60 帧/秒。通过 `PlayVideo` 传视频时方法会设置帧率 |
-| `ReadDeviceDirectory(directory, cancellation)` | 返回文件名和 `IsComplete`。未读完的回包可能仍包含部分条目。设备创建目录失败时抛出 `DeviceResponseException`，其 `Failure` 为 `DirectoryCreationFailed` |
-| `PlayDeviceFile(path)` / `DeleteDeviceFile(path)` | 播放或删除设备存储中的文件。使用以 `/` 开头的 ASCII 路径，最长 484 字节。删除回包未定义统一成功码，需重新查询目录确认结果 |
-| `ReadStorageCapacity()` | 返回 SD 卡与内部 Flash 的容量计数，单位 KiB |
-| `ReadSupplyVoltageMillivolts()` | 读取兼容设备的供电电压，单位为毫伏 |
-| `StopPlayback()` | 停止主机推流、设备内 H.264 和设备内 JPEG 循环。先取消并等待正在运行的传输 |
-| `StopVideo()` | 发送流式视频停止指令。已有持续发送时，先取消并等待该任务 |
-| `StopLocalVideo()`、`StopImageLoop()` | 停止设备存储中的视频或图片循环 |
-| `ShowDefaultClock(enabled)` | 从主机本地时间校时并显示时钟，或停止时钟 |
-| `SwitchToDesktop()` | 设置下次启动进入 Windows 桌面模式，调用方另行重启（11）后生效 |
-| `ExchangeCommand(command, arguments, payload)` | 通用加密收发。参数从明文头偏移 8 开始，最多 492 字节。载荷从 USB 偏移 512 开始，长度和标志由调用者按协议填写。返回实际应答字节 |
-| `ExchangeRawCommand(command, arguments)` | 通用裸通道收发。编号在偏移 0，参数从偏移 1 开始，最多 63 字节。返回实际应答字节 |
-| `ReadDiagnostic(command, raw)` | 返回原始应答。加密通道支持 10、17、50、60、100、112、122、201，裸通道支持 0x60、0x62 |
+| `DisplayDevice.Discover(guid)` | enumerates known models, returning interface paths and native width/height. Returns an empty list when no device is found |
+| `device.Open(key)` | opens a session. The argument is 8 bytes. The session holds its own copy of the key and zeroes it on dispose |
+| `ReadFirmwareVersion()` | reads the firmware version string |
+| `SetBrightness(percent)` | 0–100. The 12.3 inch automatically applies its brightness cap |
+| `SetRotation(quarterTurns)` | 0–3 map to 0°, 90°, 180°, 270°. Adjust after stopping the current video |
+| `ShowImage(bytes)` | pass a complete JPEG or 8-bit RGBA PNG no larger than 950,000 bytes. Stops streamed video and the clock layer before sending |
+| `ShowOverlay(png)` | pass a complete 8-bit RGBA PNG no larger than 950,000 bytes. Keeps the H.264 background playing so the firmware can composite transparent regions |
+| `PlayVideo(stream, fps, loop, cancellation, onStarted)` | a readable Annex B H.264 stream. Seeking is required for looping. The call blocks, so run it on a background thread. The optional callback fires after the first block's reply. If you cancel during a read, retry with a new stream because the original read may still be pending. |
+| `SetFrameRate(fps)` | sets 1–60 frames/second on its own. `PlayVideo` sets the frame rate when transferring video |
+| `ReadDeviceDirectory(directory, cancellation)` | returns a file-name list and `IsComplete`, which indicates whether the directory was read completely. A partial read may still return some entries. If the display fails to create the directory, the SDK throws `DeviceResponseException` with `Failure` set to `DirectoryCreationFailed` |
+| `PlayDeviceFile(path)` / `DeleteDeviceFile(path)` | plays or deletes a file on the display. Use an ASCII path starting with `/`, up to 484 bytes. Query the directory again to confirm deletion because the reply has no uniform success code |
+| `ReadStorageCapacity()` | returns total, used and free capacity for the SD card and internal flash, in KiB |
+| `ReadSupplyVoltageMillivolts()` | reads the supply voltage in millivolts on compatible displays |
+| `StopPlayback()` | stops host streaming, device-stored H.264 and the device JPEG loop. Cancel and await any running transfer first |
+| `StopVideo()` | sends the streamed-video stop command. If a continuous send is running, cancel and await that task first |
+| `StopLocalVideo()`, `StopImageLoop()` | stop video or image loops stored on the device |
+| `ShowDefaultClock(enabled)` | sets the clock from host local time and shows it, or stops the clock |
+| `SwitchToDesktop()` | sets Windows desktop mode for the next boot. The caller issues a separate restart (11) to apply it |
+| `ExchangeCommand(command, arguments, payload)` | generic encrypted send/receive. Arguments start at plaintext header offset 8, up to 492 bytes. Payload starts at USB offset 512; the caller fills length and flags per the protocol. Returns the device reply bytes |
+| `ExchangeRawCommand(command, arguments)` | generic unencrypted send/receive. The number is at offset 0, arguments from offset 1, up to 63 bytes. Returns the device reply bytes |
+| `ReadDiagnostic(command, raw)` | reads an unparsed diagnostic reply. With `raw=false`, it uses the encrypted channel and accepts only commands 10, 17, 50, 60, 100, 112, 122 and 201. With `raw=true`, it uses the unencrypted channel and accepts only 0x60 and 0x62 |
+| `PlayImage(image, fps, cancellation, onStarted, onFrameSent, onTransfer)` | repeats one image at 1–60 FPS until cancelled. Callbacks report startup, each sent frame and transfer timing |
+| `ShowJpegFrame(jpeg, onTransfer)` | sends one JPEG frame for continuous output without a video background; optionally reports USB write and reply timing |
+| `SetStartupConfiguration(brightness, startupMode, rotation, keepAwakeOffline, offlineClockRotation)` | writes the persistent startup configuration. Brightness 0–100, startup mode 0–2, orientation 0–3, offline clock orientation 0–3 |
+| `RestartDevice()` | sends command 11 to restart the display |
+| `ListDeviceFiles(directory)` | returns file names in a device directory without the completeness flag |
+| `SynchronizeClock()` | synchronizes the device clock with the host time |
+| `SetVideoClockSync(enabled)` | sets whether the device waits for video timing sync |
+| `ReadVerifiedQueryResponse(command)` | queries and validates the firmware (10), voltage (50) or storage (100) reply |
+| `ExchangeMatchingCommand(command, arguments, payload, minimumLength, cancellation)` | sends a command and reads a reply matching the number and minimum length |
 
-桌面模式设备可通过 `DesktopModeDevice.Discover()` 枚举。按 `Serial` 选择设备后调用 `SwitchToMonitorAsync()` 发送一次 HID 回切报告，再用 `DisplayDevice.Discover(DisplaySettings.InterfaceGuid)` 核对同序列号的 WinUSB 接口是否重新出现。Studio 中的操作步骤见协议文档的「Windows 桌面模式与副屏模式」。
+Use `DesktopModeDevice.Discover()` to enumerate devices in desktop mode. Select by `Serial`, call `SwitchToMonitorAsync()` to send one HID return report, then use `DisplayDevice.Discover(DisplaySettings.InterfaceGuid)` to check that the WinUSB interface with the same serial number has returned. See “Windows desktop mode and USB display mode” in the protocol reference for the Studio workflow.
 
-设备库直接使用编码后的图片或视频。MP4 等容器需先转成 Annex B H.264，HTML 和 Windows 窗口需先渲染成 PNG 或 JPEG。可自行生成这些字节，也可参考 `TURZX.WinUsbDisplay.Media` 中的 `VideoConverter`、`HtmlCapture`、`LiveScene` 和 `FrameInput`。
+The device library consumes encoded images or video directly. Containers such as MP4 must first be converted to Annex B H.264; HTML pages and window captures must first be rendered to PNG or JPEG. Produce these bytes yourself, or refer to `VideoConverter`, `HtmlCapture`, `LiveScene` and `FrameInput` in `TURZX.WinUsbDisplay.Media`.
 
-### HTML 捕捉的输出旋转
+### HTML capture output rotation
 
-`HtmlCapture.OpenAsync(source, model, cancellation, fastCapture, pixelScale, outputRotation)` 在浏览器合成阶段旋转捕捉输出。`model` 仍定义页面脚本看到的逻辑视口；例如逻辑尺寸为 1280 × 800、`pixelScale` 为 1、`outputRotation` 为 3 时，输出为 800 × 1280。
+`HtmlCapture.OpenAsync(source, model, cancellation, fastCapture, pixelScale, outputRotation)` rotates captured output during browser compositing. `model` still defines the logical viewport seen by page scripts. For example, a logical viewport of 1280 × 800 with `pixelScale=1` and `outputRotation=3` produces 800 × 1280 output.
 
-| `outputRotation` | 输出方向 |
+| `outputRotation` | Output orientation |
 | --- | --- |
-| `0` | 保持原行为；已有重载均使用此值 |
-| `1` | 逆时针 90° |
+| `0` | No rotation |
+| `1` | 90° counterclockwise |
 | `2` | 180° |
-| `3` | 顺时针 90° |
+| `3` | 90° clockwise |
 
-奇数值交换输出宽高，`pixelScale` 继续决定像素密度。非零旋转只支持本地 HTML：页面在保留逻辑尺寸的 `iframe` 中加载，CSS、脚本和图片等相对资源仍相对于原 HTML 地址解析。页面需能在 `iframe` 中运行。远程 HTTP(S) URL 的非零输出旋转抛出 `NotSupportedException`；`outputRotation=0` 的普通远程捕捉不受影响。此参数不向设备发送方向命令。
+When `outputRotation` is 1 or 3, the output width and height are swapped; `pixelScale` still determines pixel density. Nonzero rotation supports local HTML only. The page loads inside an `iframe` that preserves its logical dimensions, and relative CSS, script and image URLs still resolve against the original HTML address. The page must support running inside an `iframe`. A remote HTTP(S) URL with nonzero output rotation throws `NotSupportedException`; ordinary remote capture with `outputRotation=0` is unchanged. This parameter does not send a device rotation command.
 
-旋转同样适用于 PNG 和 JPEG：`ReadFrameAsync`、`ReadPngScreencastAsync` 返回 PNG，`ReadJpegFrameAsync`、`ReadJpegScreencastAsync` 返回 JPEG。它们分别提供按需截图和连续推帧。
+Rotation applies to screenshots and screencasts alike: `ReadFrameAsync` and `ReadPngScreencastAsync` return PNG; `ReadJpegFrameAsync` and `ReadJpegScreencastAsync` return JPEG. `ReadFrameAsync` and `ReadJpegFrameAsync` capture on demand; the two Screencast methods stream frames continuously.
 
-## 4. 会话和错误处理
+## 4. Sessions and error handling
 
-- 同一台屏幕同时只交给一个进程控制。连接后用 `using` 释放会话。
-- USB 调用是同步的。GUI 将设备读写放在工作线程。实时前景可以在同一会话中与 `PlayVideo` 交替发送，各请求与应答由库串行配对。
-- 停止循环视频时先取消 `CancellationToken` 并等待传输返回，再释放会话或切换内容。取消期间已开始的 USB 请求会等应答或端点超时。
-- 打开设备时，可通过 `DisplayOpenException.Failure` 区分共享冲突（`InUse`）和访问拒绝（`AccessDenied`）。取消视频传输后，如果设备端停播命令失败，SDK 会抛出 `PlaybackStopException`。
-- WinUSB 错误返回 `Win32Exception`，包含操作和 Windows 错误码。短写、空应答或无效应答可能返回 `IOException`。设备断开时释放旧会话并重新枚举，避免盲目重放已经送达的块。
-- 诊断解析前检查实际长度。型号或固件不支持某项指令时，可能超时或返回不同布局。
+- Give a single display to only one process at a time. Release the session with `using` after connecting.
+- USB calls are synchronous. GUIs should put device reads/writes on a worker thread. A live foreground can alternate with `PlayVideo` in the same session; the library serializes each request/reply pair.
+- To stop looping video, cancel the `CancellationToken` and await the transfer's return before disposing the session or switching content. A USB request already started during cancellation waits for its reply or the endpoint timeout.
+- When opening a device, inspect `DisplayOpenException.Failure` for a sharing conflict (`InUse`) or denied access (`AccessDenied`). After cancelling video transmission, a failed device stop command raises `PlaybackStopException`.
+- WinUSB errors surface as `Win32Exception` including the operation and Windows error code. Short writes, empty replies or invalid replies may surface as `IOException`. On device disconnect, dispose the old session and re-enumerate; do not blindly replay blocks that were already delivered.
+- Check the reply length before parsing diagnostics. A model or firmware that does not support a command may time out or return a different layout.
 
-指令编号、参数偏移、字节序和封包示例见 [Win207 设备指令技术说明](win207-protocol.md)。
+Command numbers, argument offsets, byte order and packet examples are in the [Win207 device command reference](win207-protocol.md).

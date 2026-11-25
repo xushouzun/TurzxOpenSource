@@ -61,6 +61,10 @@ public partial class MainWindow : Window
     private bool nativeThemeBusy;
     /// <summary>取消正在进行中的原生主题预览渲染。</summary>
     private CancellationTokenSource? nativePreviewCancellation;
+    /// <summary>当前选择的原生主题路径。</summary>
+    private string nativeThemePath = "";
+    /// <summary>屏蔽重建主题下拉框时触发的选择事件。</summary>
+    private bool loadingNativeThemeChoices;
     /// <summary>优先恢复选择的设备接口路径。</summary>
     private string? preferredDevicePath;
     /// <summary>为设备枚举和待重连续播安排后续检查。</summary>
@@ -75,6 +79,8 @@ public partial class MainWindow : Window
         Func<NativeThemeDevice[]>? discoverNativeThemes = null)
     {
         this.preferences = preferences;
+        DisplaySettings.InterfaceGuid = Guid.TryParse(preferences.InterfaceGuid, out Guid interfaceGuid)
+            ? interfaceGuid : DisplayDevice.WinUsbDeviceInterface;
         this.discoverDisplays = discoverDisplays ??
             (static () => DisplayDevice.Discover(DisplaySettings.InterfaceGuid).ToArray());
         this.discoverNativeThemes = discoverNativeThemes
@@ -328,7 +334,7 @@ public partial class MainWindow : Window
         if (SelectedNativeTheme is not null)
         {
             Status.Text = nativeThemePlaying
-                ? T("NativeThemePlaying", Path.GetFileNameWithoutExtension(NativeThemePath.Text))
+                ? T("NativeThemePlaying", Path.GetFileNameWithoutExtension(nativeThemePath))
                 : T("NativeThemeHint");
             return;
         }
@@ -394,6 +400,13 @@ public partial class MainWindow : Window
         NativeThemeSettings.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         LayoutBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         HomeCanvas.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        if (enabled)
+            StopLocalPreview();
+        // 高级控制和设备指令只适用于 Win207，串口屏不显示这两个工作区。
+        AdvancedNav.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        CommandsNav.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        if (enabled && (AdvancedNav.IsChecked == true || CommandsNav.IsChecked == true))
+            MediaNav.IsChecked = true;
         // 3.5 寸原生主题只有正向和反向两种方向，隐藏 90° 和 270°。
         Rotation90.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         Rotation270.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
@@ -407,11 +420,79 @@ public partial class MainWindow : Window
         }
         else
         {
-            if (NativeThemePath.Text.Length == 0)
-                NativeThemePath.Text = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault() ?? "";
+            if (nativeThemePath.Length == 0)
+                nativeThemePath = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault() ?? "";
+            PopulateNativeThemeChoices();
             _ = UpdateNativeThemePreviewAsync();
             Status.Text = T("NativeThemeHint");
         }
+    }
+
+    /// <summary>加载默认主题目录和当前自定义主题到下拉框。</summary>
+    private void PopulateNativeThemeChoices()
+    {
+        var options = NativeThemePlayer.DiscoverFactoryThemes()
+            .Select(path => new NativeThemeOption(Path.GetFileNameWithoutExtension(path), path))
+            .ToList();
+        if (nativeThemePath.Length > 0 && File.Exists(nativeThemePath)
+            && options.All(option => !string.Equals(option.Path, nativeThemePath, StringComparison.OrdinalIgnoreCase)))
+            options.Insert(0, new NativeThemeOption(Path.GetFileNameWithoutExtension(nativeThemePath), nativeThemePath));
+
+        loadingNativeThemeChoices = true;
+        try
+        {
+            NativeThemeChoice.ItemsSource = options;
+            NativeThemeChoice.SelectedItem = options.FirstOrDefault(option =>
+                string.Equals(option.Path, nativeThemePath, StringComparison.OrdinalIgnoreCase));
+            if (NativeThemeChoice.SelectedItem is null && options.Count > 0)
+                NativeThemeChoice.SelectedIndex = 0;
+            if (NativeThemeChoice.SelectedItem is NativeThemeOption selected)
+                nativeThemePath = selected.Path;
+        }
+        finally
+        {
+            loadingNativeThemeChoices = false;
+        }
+    }
+
+    /// <summary>下拉框切换主题后更新路径和预览。</summary>
+    private void OnNativeThemeChoiceChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (loadingNativeThemeChoices || NativeThemeChoice.SelectedItem is not NativeThemeOption option)
+            return;
+        nativeThemePath = option.Path;
+        _ = UpdateNativeThemePreviewAsync();
+        UpdateMediaControls();
+    }
+
+    /// <summary>选择指定路径的原生主题并同步下拉框。</summary>
+    private void SelectNativeTheme(string path)
+    {
+        nativeThemePath = path;
+        var options = (NativeThemeChoice.ItemsSource as IEnumerable<NativeThemeOption>)?.ToList()
+            ?? NativeThemePlayer.DiscoverFactoryThemes()
+                .Select(theme => new NativeThemeOption(Path.GetFileNameWithoutExtension(theme), theme))
+                .ToList();
+        NativeThemeOption? selected = options.FirstOrDefault(option =>
+            string.Equals(option.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (selected is null)
+        {
+            selected = new NativeThemeOption(Path.GetFileNameWithoutExtension(path), path);
+            options.Insert(0, selected);
+        }
+
+        loadingNativeThemeChoices = true;
+        try
+        {
+            NativeThemeChoice.ItemsSource = options;
+            NativeThemeChoice.SelectedItem = selected;
+        }
+        finally
+        {
+            loadingNativeThemeChoices = false;
+        }
+        _ = UpdateNativeThemePreviewAsync();
+        UpdateMediaControls();
     }
 
     /// <summary>渲染所选原生主题并显示在预览区。</summary>
@@ -420,7 +501,7 @@ public partial class MainWindow : Window
         nativePreviewCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
         nativePreviewCancellation = cancellation;
-        string theme = NativeThemePath.Text.Trim();
+        string theme = nativeThemePath.Trim();
         if (SelectedNativeTheme is null || !File.Exists(theme))
         {
             NativeThemeImage.Source = null;
@@ -700,15 +781,33 @@ public partial class MainWindow : Window
         };
         if (picker.ShowDialog(this) != true)
             return;
-        NativeThemePath.Text = picker.FileName;
-        _ = UpdateNativeThemePreviewAsync();
+        SelectNativeTheme(picker.FileName);
+    }
+
+    /// <summary>清除当前选择的原生主题路径。</summary>
+    private void OnClearNativeTheme(object sender, RoutedEventArgs e)
+    {
+        nativeThemePath = "";
+        loadingNativeThemeChoices = true;
+        try
+        {
+            NativeThemeChoice.SelectedItem = null;
+        }
+        finally
+        {
+            loadingNativeThemeChoices = false;
+        }
+        NativeThemeImage.Source = null;
+        NativeThemeImage.Visibility = Visibility.Collapsed;
         UpdateMediaControls();
+        if (!nativeThemePlaying)
+            Status.Text = T("NativeThemeHint");
     }
 
     /// <summary>调用原项目播放 3.5 寸原生主题。</summary>
     private async Task StartNativeThemeAsync(NativeThemeDevice nativeTheme)
     {
-        string theme = NativeThemePath.Text.Trim();
+        string theme = nativeThemePath.Trim();
         if (!File.Exists(theme))
         {
             Status.Text = T("SelectNativeTheme");
@@ -944,6 +1043,8 @@ public partial class MainWindow : Window
 
         if (DocsNav.IsChecked == true && renderedMarkdown.Length == 0)
             ShowSelectedDocumentation();
+        if (AdvancedNav.IsChecked == true)
+            RefreshDesktopModeDriverStatus();
         if (IsLoaded && CommandsNav.IsChecked == true && IsDesktopRecoverySelected)
             _ = RefreshDesktopDevicesAsync();
     }

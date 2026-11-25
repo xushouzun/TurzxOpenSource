@@ -10,6 +10,8 @@
 # 本地预览与交付过程记录
 /README.html
 /docs/delivery-*.md
+/.screenshots/
+/.trae-html-share-packages/
 
 # 测试结果与覆盖率产物
 TestResults/

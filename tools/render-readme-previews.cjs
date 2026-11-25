@@ -14,16 +14,17 @@ const delay = 80;
 const count = 100;
 
 async function main() {
-  const candidates = [process.env.WINUSB_DISPLAY_BROWSER,
+  const candidates = [
     'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].filter(Boolean);
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Microsoft/Edge/Application/msedge.exe'];
   let executablePath;
   for (const candidate of candidates) {
     try { await fs.access(candidate); executablePath = candidate; break; } catch {}
   }
-  if (!executablePath) throw new Error('Set WINUSB_DISPLAY_BROWSER to a Chromium executable.');
+  if (!executablePath) throw new Error('Chrome or Edge was not found.');
   const env = { ...process.env };
-  delete env.WINUSB_DISPLAY_COMMAND_KEY;
   const browser = await chromium.launch({ executablePath, headless: true, env });
   try {
     const context = await browser.newContext({ viewport: { width: 480, height: 480 },

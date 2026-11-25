@@ -17,4 +17,4 @@ Expand-Archive -LiteralPath $archive -DestinationPath $directory
 $ffmpeg = Join-Path $directory "$build/bin/ffmpeg.exe"
 & $ffmpeg -version
 if ($LASTEXITCODE -ne 0) { throw "FFmpeg could not start ($LASTEXITCODE)." }
-"WINUSB_DISPLAY_FFMPEG=$ffmpeg" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+Split-Path -Parent $ffmpeg | Add-Content -LiteralPath $env:GITHUB_PATH -Encoding utf8

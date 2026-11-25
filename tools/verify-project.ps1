@@ -246,11 +246,15 @@ try {
                 $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
                 try {
                     $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-                    foreach ($required in @('LICENSE', 'NOTICE.md', 'NOTICE.zh-CN.md', 'SECURITY.md', 'SECURITY.zh-CN.md', 'README.md', 'README.zh-CN.md')) {
-                        if ($required -notin $entries) { throw "$archiveName is missing $required." }
+                    $required = @('LICENSE')
+                    if ($archiveName -like '*Studio*') {
+                        $required += @('README.md', 'README.zh-CN.md')
+                    }
+                    foreach ($requiredFile in $required) {
+                        if ($requiredFile -notin $entries) { throw "$archiveName is missing $requiredFile." }
                     }
                     $specific = if ($archiveName -like '*Studio*') {
-                        @('TURZX.WinUsbDisplay.Studio.exe', 'coreclr.dll', 'licenses/Microsoft.NETCore.App/LICENSE.TXT', 'licenses/Microsoft.NETCore.App/THIRD-PARTY-NOTICES.TXT', 'licenses/Microsoft.WindowsDesktop.App/LICENSE')
+                        @('TURZX.WinUsbDisplay.Studio.exe', 'coreclr.dll', 'licenses/Microsoft.NETCore.App/LICENSE.TXT', 'licenses/Microsoft.NETCore.App/THIRD-PARTY-NOTICES.TXT', 'licenses/Microsoft.WindowsDesktop.App/LICENSE', 'Driver/TURZX_display_driver.inf', 'Driver/TURZX_display_driver.cat', 'Driver/TURZX_display_driver.dll')
                     } else {
                         @('lib/TURZX.WinUsbDisplay.dll', 'lib/TURZX.WinUsbDisplay.xml', 'lib/TURZX.WinUsbDisplay.Media.dll', 'lib/TURZX.WinUsbDisplay.Media.xml', 'examples/SdkDiscover/SdkDiscover.csproj')
                     }

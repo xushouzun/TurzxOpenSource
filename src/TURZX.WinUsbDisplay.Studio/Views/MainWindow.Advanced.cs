@@ -5,11 +5,14 @@ using static TURZX.WinUsbDisplay.Studio.StudioLanguage;
 
 namespace TURZX.WinUsbDisplay.Studio;
 
-// 实现设备高级状态查询和固件时钟控制。
+// 实现设备高级状态查询、固件时钟控制和桌面模式驱动安装。
 public partial class MainWindow
 {
     /// <summary>最近一次刷新高级控件时所选设备的接口路径。</summary>
     private string? advancedDevicePath;
+    private bool installingDesktopModeDriver;
+    private bool uninstallingDesktopModeDriver;
+    private bool desktopModeDriverInstalled;
 
     /// <summary>检查所选型号是否支持固件内置时钟。</summary>
     private static bool SupportsFirmwareClock(DisplayModel? model) =>
@@ -49,6 +52,98 @@ public partial class MainWindow
         UpdateSendBenchmarkControls();
         UpdateDeviceMediaControls();
         UpdateDeviceSettingsControls(device);
+        UpdateDesktopModeDriverControls();
+    }
+
+    /// <summary>重新检测桌面模式驱动是否已安装。</summary>
+    private void RefreshDesktopModeDriverStatus()
+    {
+        if (InstallDesktopModeDriver is null || UninstallDesktopModeDriver is null || DesktopModeDriverStatus is null) return;
+        desktopModeDriverInstalled = DesktopModeDriver.IsInstalled;
+        UpdateDesktopModeDriverControls();
+    }
+
+    /// <summary>同步驱动安装、卸载按钮和状态文案。</summary>
+    private void UpdateDesktopModeDriverControls()
+    {
+        if (InstallDesktopModeDriver is null || UninstallDesktopModeDriver is null || DesktopModeDriverStatus is null) return;
+        bool changing = installingDesktopModeDriver || uninstallingDesktopModeDriver;
+        InstallDesktopModeDriver.IsEnabled = !busy && !changing
+            && DesktopModeDriver.IsAvailable && !desktopModeDriverInstalled;
+        UninstallDesktopModeDriver.IsEnabled = !busy && !changing
+            && DesktopModeDriver.IsAvailable && desktopModeDriverInstalled;
+        if (changing) return;
+        DesktopModeDriverStatus.Text = !DesktopModeDriver.IsAvailable
+            ? T("DesktopModeDriverUnavailable")
+            : desktopModeDriverInstalled ? T("DesktopModeDriverInstalled") : T("DesktopModeDriverMissing");
+    }
+
+    /// <summary>提权安装随包的桌面模式显示驱动。</summary>
+    private async void OnInstallDesktopModeDriver(object sender, RoutedEventArgs e)
+    {
+        if (busy || installingDesktopModeDriver || uninstallingDesktopModeDriver || !DesktopModeDriver.IsAvailable) return;
+        installingDesktopModeDriver = true;
+        UpdateDesktopModeDriverControls();
+        DesktopModeDriverStatus.Text = T("DesktopModeDriverInstalling");
+        try
+        {
+            bool installed = await DesktopModeDriver.InstallAsync(deviceControlShutdown.Token);
+            if (!installed)
+                Status.Text = T("DesktopModeDriverInstallFailed");
+        }
+        catch (Win32Exception error) when (error.NativeErrorCode == 1223)
+        {
+            Status.Text = T("DesktopModeDriverCancelled");
+        }
+        catch (OperationCanceledException) when (deviceControlShutdown.IsCancellationRequested)
+        {
+        }
+        catch (Exception error)
+        {
+            Status.Text = DescribeUiError(error);
+        }
+        finally
+        {
+            installingDesktopModeDriver = false;
+            if (!closing)
+                RefreshDesktopModeDriverStatus();
+        }
+    }
+
+    /// <summary>提权卸载桌面模式显示驱动。</summary>
+    private async void OnUninstallDesktopModeDriver(object sender, RoutedEventArgs e)
+    {
+        if (busy || installingDesktopModeDriver || uninstallingDesktopModeDriver || !desktopModeDriverInstalled) return;
+        if (MessageBox.Show(T("DesktopModeDriverConfirmUninstall"), T("UninstallDesktopModeDriver"),
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            return;
+        uninstallingDesktopModeDriver = true;
+        UpdateDesktopModeDriverControls();
+        DesktopModeDriverStatus.Text = T("DesktopModeDriverUninstalling");
+        try
+        {
+            bool uninstalled = await DesktopModeDriver.UninstallAsync(deviceControlShutdown.Token);
+            Status.Text = uninstalled
+                ? T("DesktopModeDriverUninstalled")
+                : T("DesktopModeDriverUninstallFailed");
+        }
+        catch (Win32Exception error) when (error.NativeErrorCode == 1223)
+        {
+            Status.Text = T("DesktopModeDriverUninstallCancelled");
+        }
+        catch (OperationCanceledException) when (deviceControlShutdown.IsCancellationRequested)
+        {
+        }
+        catch (Exception error)
+        {
+            Status.Text = DescribeUiError(error);
+        }
+        finally
+        {
+            uninstallingDesktopModeDriver = false;
+            if (!closing)
+                RefreshDesktopModeDriverStatus();
+        }
     }
 
     /// <summary>查询并显示固件版本、电压和存储容量。</summary>

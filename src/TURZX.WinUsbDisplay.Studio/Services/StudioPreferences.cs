@@ -67,6 +67,8 @@ internal sealed class StudioPreferences
         public string Language { get; set; } = StudioLanguage.DefaultLanguage;
         /// <summary>按设备接口路径保存的显示设置。</summary>
         public Dictionary<string, ScreenPreferences> Screens { get; set; } = new();
+        /// <summary>自定义 WinUSB 接口 GUID，为空时使用标准接口。</summary>
+        public string? InterfaceGuid { get; set; }
     }
 
     /// <summary>Studio 首选项文件路径。</summary>
@@ -95,6 +97,9 @@ internal sealed class StudioPreferences
 
     /// <summary>获取保存的界面语言代码。</summary>
     internal string Language => settings.Language;
+
+    /// <summary>获取自定义 WinUSB 接口 GUID。</summary>
+    internal string? InterfaceGuid => settings.InterfaceGuid;
 
     /// <summary>获取设备对应的显示首选项。</summary>
     internal ScreenPreferences GetScreen(string devicePath) => GetScreen(settings, devicePath.ToUpperInvariant());

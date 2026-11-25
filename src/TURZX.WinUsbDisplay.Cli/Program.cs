@@ -2,6 +2,21 @@ using System.Security.Cryptography;
 using TURZX.WinUsbDisplay;
 using TURZX.WinUsbDisplay.Media;
 
+string? interfaceGuid = null;
+var remaining = new List<string>();
+for (int index = 0; index < args.Length; index++)
+{
+    if (args[index] == "--interface-guid" && index + 1 < args.Length)
+    {
+        interfaceGuid = args[++index];
+        continue;
+    }
+    remaining.Add(args[index]);
+}
+args = remaining.ToArray();
+if (interfaceGuid is not null)
+    DisplaySettings.InterfaceGuid = Guid.Parse(interfaceGuid);
+
 if (args.Length == 0 || args is ["--help"] or ["-h"])
 {
     Console.WriteLine("""
@@ -15,6 +30,7 @@ if (args.Length == 0 || args is ["--help"] or ["-h"])
           brightness <device> <0..100>
         Device indexes are zero-based, as printed by list.
         Video accepts raw Annex B H.264 or a video file readable by FFmpeg.
+        Use --interface-guid <guid> to override the WinUSB interface GUID.
         """);
     return 0;
 }

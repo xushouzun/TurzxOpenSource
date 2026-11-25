@@ -23,12 +23,11 @@ public class HtmlCaptureTests
             string edge = CreateExecutable(system, "Microsoft", "Edge", "msedge.exe");
             string chrome = CreateExecutable(user, "Google", "Chrome", "chrome.exe");
 
-            Assert.Equal("custom-browser.exe", HtmlCapture.ResolveBrowserExecutable("custom-browser.exe", system, user));
-            Assert.Equal(chrome, HtmlCapture.ResolveBrowserExecutable(null, system, user));
+            Assert.Equal(chrome, HtmlCapture.ResolveBrowserExecutable(system, user));
             File.Delete(chrome);
-            Assert.Equal(edge, HtmlCapture.ResolveBrowserExecutable(" ", system, user));
+            Assert.Equal(edge, HtmlCapture.ResolveBrowserExecutable(system, user));
             File.Delete(edge);
-            Assert.Throws<FileNotFoundException>(() => HtmlCapture.ResolveBrowserExecutable(null, system, user));
+            Assert.Throws<FileNotFoundException>(() => HtmlCapture.ResolveBrowserExecutable(system, user));
         }
         finally
         {
