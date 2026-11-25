@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.IO;
 using Microsoft.Win32;
 using TURZX.WinUsbDisplay.Studio.NativeTheme;
@@ -84,6 +85,9 @@ internal sealed class NativeThemePlayer : IDisposable
 {
     private NativeThemeSerialSession? session;
     private System.Drawing.Bitmap? lastFrame;
+    private NativeThemeDocument? document;
+    private CancellationTokenSource? refreshCancellation;
+    private readonly object frameGate = new();
     private byte brightness = 168;
     private bool invert;
     private bool landscape;
@@ -91,9 +95,16 @@ internal sealed class NativeThemePlayer : IDisposable
     private int height;
 
     /// <summary>指示原生主题播放是否仍在运行。</summary>
-    internal bool IsRunning => session is not null;
+    internal bool IsRunning
+    {
+        get
+        {
+            lock (frameGate)
+                return session is not null;
+        }
+    }
 
-    /// <summary>随 Studio 发布的三个默认主题目录。</summary>
+    /// <summary>随 Studio 发布的默认主题目录。</summary>
     internal static string ThemeDirectory => Path.Combine(AppContext.BaseDirectory, "NativeThemes");
 
     /// <summary>列出随 Studio 发布的默认主题。</summary>
@@ -113,32 +124,36 @@ internal sealed class NativeThemePlayer : IDisposable
         }
     }
 
-    /// <summary>读取主题、渲染一帧并发送到 3.5 寸屏幕。</summary>
+    /// <summary>读取主题、渲染首帧并启动实时局部刷新。</summary>
     internal async Task StartAsync(NativeThemeDevice device, string themePath, byte brightness, bool invert,
         CancellationToken cancellation)
     {
         if (!File.Exists(themePath))
             throw new NativeThemePlayerException("The selected native theme was not found.", "SelectNativeTheme");
 
-        await Task.Run(() =>
+        // 重新开始前先结束上一轮刷新循环，避免两个循环同时写串口。
+        Stop();
+
+        NativeThemeDocument? loaded = null;
+        System.Drawing.Bitmap? frame = null;
+        NativeThemeSerialSession? next = null;
+        try
         {
-            cancellation.ThrowIfCancellationRequested();
-            using NativeThemeDocument document = NativeThemeDocument.Load(themePath);
-            System.Drawing.Bitmap frame = NativeThemeRenderer.Render(document);
+            await Task.Run(() =>
+            {
+                cancellation.ThrowIfCancellationRequested();
+                loaded = NativeThemeDocument.Load(themePath);
+                frame = NativeThemeRenderer.Render(loaded);
 
-            NativeThemeSerialSession next;
-            try
-            {
-                next = new NativeThemeSerialSession(device.PortName);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
-            {
-                frame.Dispose();
-                throw new NativeThemePlayerException(error.Message, "NativeThemeSerialFailed");
-            }
+                try
+                {
+                    next = new NativeThemeSerialSession(device.PortName);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    throw new NativeThemePlayerException(error.Message, "NativeThemeSerialFailed");
+                }
 
-            try
-            {
                 // 原项目顺序：连接探测 -> 唤醒 -> 镜像/方向 -> 亮度 -> 完整图像。
                 // 端口打开后先留出和原项目 TestConnect 相同的稳定时间，再发探测包。
                 Thread.Sleep(100);
@@ -147,30 +162,96 @@ internal sealed class NativeThemePlayer : IDisposable
                 next.Wake();
                 Thread.Sleep(100);
                 next.SetMirrorMode(0);
-                next.SetRotation(RotationFor(document.IsLandscape, invert), frame.Width, frame.Height);
+                next.SetRotation(RotationFor(loaded.IsLandscape, invert), frame.Width, frame.Height);
                 Thread.Sleep(500);
                 next.SetBrightness(brightness);
                 next.SendFrame(frame);
-            }
-            catch
+            }, cancellation).ConfigureAwait(false);
+
+            // 首帧发送期间窗口可能已经关闭，不能在取消后继续注册串口和刷新循环。
+            cancellation.ThrowIfCancellationRequested();
+            lock (frameGate)
             {
-                frame.Dispose();
-                next.Dispose();
-                throw;
+                document = loaded!;
+                session = next!;
+                lastFrame = frame!;
+                this.brightness = brightness;
+                this.invert = invert;
+                landscape = document.IsLandscape;
+                width = lastFrame.Width;
+                height = lastFrame.Height;
+                loaded = null;
+                frame = null;
+                next = null;
             }
 
-            NativeThemeSerialSession? previous = session;
-            System.Drawing.Bitmap? previousFrame = lastFrame;
-            session = next;
-            lastFrame = frame;
-            previousFrame?.Dispose();
-            this.brightness = brightness;
-            this.invert = invert;
-            landscape = document.IsLandscape;
-            width = frame.Width;
-            height = frame.Height;
-            previous?.Dispose();
-        }, cancellation).ConfigureAwait(false);
+            var refresh = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            refreshCancellation = refresh;
+            _ = Task.Run(() => RefreshLoopAsync(refresh));
+        }
+        catch
+        {
+            next?.Dispose();
+            frame?.Dispose();
+            loaded?.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 原项目的做法：每秒读取一次数据、重新渲染，并只发送发生变化的矩形区域。
+    /// 这样屏幕可以持续更新，而不必反复传输整帧 RGB565。
+    /// </summary>
+    private async Task RefreshLoopAsync(CancellationTokenSource refresh)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), refresh.Token).ConfigureAwait(false);
+                refresh.Token.ThrowIfCancellationRequested();
+                lock (frameGate)
+                {
+                    NativeThemeSerialSession? activeSession = session;
+                    System.Drawing.Bitmap? previousFrame = lastFrame;
+                    NativeThemeDocument? activeDocument = document;
+                    if (activeSession is null || previousFrame is null || activeDocument is null)
+                        return;
+                    System.Drawing.Bitmap next = NativeThemeRenderer.Render(activeDocument);
+                    bool committed = false;
+                    try
+                    {
+                        foreach (Rectangle region in NativeThemeFrameDiff.FindRegions(previousFrame, next))
+                            activeSession.SendRegion(next, region);
+                        lastFrame = next;
+                        committed = true;
+                        previousFrame.Dispose();
+                    }
+                    finally
+                    {
+                        if (!committed)
+                            next.Dispose();
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            // 串口断开或窗口关闭时停止刷新；设备轮询会触发播放停止。
+        }
+        finally
+        {
+            lock (frameGate)
+            {
+                if (ReferenceEquals(refreshCancellation, refresh))
+                    refreshCancellation = null;
+            }
+            refresh.Dispose();
+        }
     }
 
     /// <summary>在播放期间调整背光亮度。</summary>
@@ -179,7 +260,8 @@ internal sealed class NativeThemePlayer : IDisposable
         if (brightness == value)
             return;
         brightness = value;
-        session?.SetBrightness(value);
+        lock (frameGate)
+            session?.SetBrightness(value);
     }
 
     /// <summary>在播放期间调整显示方向。</summary>
@@ -188,11 +270,14 @@ internal sealed class NativeThemePlayer : IDisposable
         if (invert == value)
             return;
         invert = value;
-        if (session is not null)
+        lock (frameGate)
         {
-            session.SetRotation(RotationFor(landscape, invert), width, height);
-            if (lastFrame is not null)
-                session.SendFrame(lastFrame);
+            if (session is not null)
+            {
+                session.SetRotation(RotationFor(landscape, invert), width, height);
+                if (lastFrame is not null)
+                    session.SendFrame(lastFrame);
+            }
         }
     }
 
@@ -200,15 +285,29 @@ internal sealed class NativeThemePlayer : IDisposable
     private static int RotationFor(bool landscape, bool invert) =>
         ((landscape ? 2 : 0) + (invert ? 1 : 0)) % 4;
 
-    /// <summary>关闭串口，停止当前播放。</summary>
+    /// <summary>关闭串口，停止当前播放和实时刷新。</summary>
     internal void Stop()
     {
-        NativeThemeSerialSession? active = session;
-        System.Drawing.Bitmap? frame = lastFrame;
-        session = null;
-        lastFrame = null;
+        CancellationTokenSource? refresh;
+        NativeThemeSerialSession? active;
+        System.Drawing.Bitmap? frame;
+        NativeThemeDocument? loaded;
+        lock (frameGate)
+        {
+            refresh = refreshCancellation;
+            refreshCancellation = null;
+            active = session;
+            session = null;
+            frame = lastFrame;
+            lastFrame = null;
+            loaded = document;
+            document = null;
+            // 在锁内取消，避免与刷新循环的 finally 释放 CTS 竞争。
+            refresh?.Cancel();
+        }
         active?.Dispose();
         frame?.Dispose();
+        loaded?.Dispose();
     }
 
     /// <summary>停止当前播放。</summary>

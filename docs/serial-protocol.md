@@ -1,6 +1,6 @@
 # TURZX 3.5-inch serial display protocol
 
-This document describes the serial protocol used by the 3.5-inch serial display (`1A86:5722`). It is not a WinUSB/Win207 device: Studio renders the JSON theme on the host and sends one complete RGB565 frame over a CH340 serial port.
+This document describes the serial protocol used by the 3.5-inch serial display (`1A86:5722`). It is not a WinUSB/Win207 device: Studio renders the theme on the host, sends one complete RGB565 frame when playback starts and then sends only changed regions over a CH340 serial port.
 
 The protocol is one-way. Studio does not read replies, so a successful serial write only proves that Windows accepted the bytes.
 
@@ -9,7 +9,7 @@ The protocol is one-way. Studio does not read replies, so a successful serial wr
 - The USB VID:PID is `1A86:5722`; the USB instance name contains `USB35INCH`. Studio finds the active `COM` port for that instance.
 - Serial settings: 115200 baud, 8 data bits, no parity, 1 stop bit, no flow control; DTR and RTS are enabled.
 - The device canvas is 480 × 320. A theme may use a 480 × 320 or 320 × 480 canvas.
-- Only one frame is sent when playback starts and after a theme or orientation change; there is no continuous stream.
+- A full frame is sent when playback starts or the orientation changes. While playing, Studio refreshes changed regions about once per second.
 
 ## Register packet
 
@@ -24,7 +24,7 @@ Each transfer starts with a 6-byte header. X, Y, EndX and EndY are 10-bit values
 | 4 | EndY bits 7–0 |
 | 5 | register |
 
-When a transfer carries a payload longer than six bytes, the first six bytes of the payload buffer are replaced by the header; meaningful payload fields therefore start at byte 6. Payloads of six bytes or fewer are ignored and only the header is sent.
+For payloads longer than six bytes, the header overwrites the first six bytes of the payload buffer, so payload data starts at byte 6. Payloads of six bytes or fewer carry no data and are sent as the header alone.
 
 ## Registers
 
@@ -63,21 +63,22 @@ Types 0–3 correspond to the four firmware orientations. Landscape themes use t
 
 ## Frame data
 
-Pixels are RGB565, row-major from top to bottom, with no row padding. Each pixel is two bytes, low byte first (little-endian). A 480 × 320 frame contains 307,200 pixel bytes. At 115200 8N1 a full frame takes about 27 seconds, so this interface is intended for static theme frames, not live video.
+Pixels are RGB565, row-major from top to bottom, with no row padding. Each pixel is two bytes, low byte first (little-endian). A 480 × 320 frame contains 307,200 pixel bytes. At 115200 8N1 a full frame takes about 27 seconds, so live updates send only changed regions; this interface is not intended for live video.
 
 ## Theme file
 
-- Studio reads JSON `.data` files only; legacy binary `.data` files are rejected.
-- `backImg` is required and contains a base64 PNG; the factory themes store it under `backImg.png`. Optional fields include `osdImg`, `osdWithFontBack`, `groupList`, `barList`, `archList` and `tipList`.
-- The `isLanscape` flag preserves the original file spelling. The canvas must be 480 × 320 or 320 × 480.
-- Studio renders text, bars, arcs and images on the host. Values come from the theme file; empty item text uses placeholder samples, and live sensor data is not read.
-- Three factory landscape themes ship with Studio, all 480 × 320.
+- A theme is a `.data` file produced by the original 3.5-inch display tool: a .NET BinaryFormatter (NRBF) stream whose root object is `usb_hid.ThemeConfig`.
+- The file stores the background PNG, optional OSD images, text groups, bars, arcs and tips; the `isLanscape` flag keeps the original spelling.
+- The background canvas must be 480 × 320 or 320 × 480; other sizes are rejected.
+- Studio only reads this format and never rewrites it. Create or edit themes with the original tool.
+- Studio renders text, bars, arcs and images on the host. Named metrics use simulated mock values; unnamed or custom text keeps theme values and placeholder samples. No live sensor data is read.
+- Eight factory themes ship with Studio: six at 480 × 320 and two at 320 × 480.
 
 ## Limits
 
 - Studio uses no read channel, acknowledgement or retry; serial write errors are the only transport feedback.
 - No encryption or command key.
 - This interface provides no device-side storage, H.264, layers, clock or desktop mode.
-- One complete frame is transferred at a time; do not interleave frames.
+- One region or full frame is transferred at a time; do not interleave transfers.
 
 See the [compatibility record](compatibility.md) for device detection, brightness and orientation in Studio.

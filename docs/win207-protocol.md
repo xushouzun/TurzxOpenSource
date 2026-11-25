@@ -1,15 +1,15 @@
 # TURZX Win207 device command reference
 
-This reference describes the Win207 host protocol implemented by this project. Command support depends on the model and firmware. The tables use upper snake case: `GET_` for reads, `SET_` for configuration, and `WRITE_` for transfers. The device identifies requests by command number and channel.
+This reference describes the Win207 host protocol implemented by this project. Command support depends on the model and firmware. Command names use upper snake case: `GET_` for reads, `SET_` for configuration, and `WRITE_` for transfers. The device identifies requests by command number and channel.
 
 Offsets are zero-based and ranges are inclusive. `u8` is a 1-byte unsigned integer; `u16be`, `u32be` are 2- and 4-byte big-endian unsigned integers; `u32le` is a 4-byte little-endian unsigned integer. "Header" means the 500-byte plaintext header before encryption; "reply" means the raw bytes read from the IN endpoint. Encrypted channel numbers are decimal; raw channel numbers are hexadecimal.
 
 ## Connection and calling
 
 - Windows enumerates by the interface GUID registered by the device driver. The default GUID is `DEE824EF-729B-4A0E-9C14-B7117D33A817`. For a custom driver, set `InterfaceGuid` in the Studio settings file or pass `--interface-guid` to the CLI.
-- The WinUSB OUT endpoint is `0x01` and the IN endpoint is `0x81`. Send one request then read its reply to avoid mismatches. Studio's OUT write timeout is 10000 ms, the IN read timeout is 5000 ms, and the read buffer is 512 bytes. Large live payloads such as PNGs pause briefly while the firmware composites.
+- The WinUSB OUT endpoint is `0x01` and the IN endpoint is `0x81`. Send one request then read its reply to avoid mismatches. Studio's OUT write timeout is 10000 ms, the IN read timeout is 5000 ms, and the read buffer is 512 bytes. The firmware briefly pauses while compositing large live payloads such as PNGs.
 - The 8-byte packet key is built in. Studio, the CLI and the SDK require no extra configuration; the SDK can still accept a custom 8-byte key.
-- Check the reply length before parsing a reply. For structured firmware, storage and supply queries Studio also checks that reply byte 0 echoes the request number, to avoid parsing a reply left over from another command. A reply does not prove successful execution; some commands add status fields.
+- Check the reply length before parsing a reply. For structured firmware, storage and supply replies, Studio also verifies that byte 0 echoes the request number, so a stale reply from another command is not parsed. A reply does not prove successful execution; some commands add status fields.
 
 ## Encrypted channel packet
 
@@ -18,9 +18,9 @@ Offsets are zero-based and ranges are inclusive. `u8` is a 1-byte unsigned integ
 | plaintext 0 | command number |
 | plaintext 1 | reserved, 0 |
 | plaintext 2–3 | fixed marker `1A 6D` |
-| plaintext 4–7 | Low 32 bits of the millisecond difference between current UTC and the local start of the previous day, as determined at session creation. Little-endian |
+| plaintext 4–7 | Low 32 bits of the milliseconds from local midnight at the start of the previous day to the current UTC time, captured when the session is created. Little-endian |
 | plaintext 8–499 | command arguments, remainder zero-filled |
-| USB request 0–503 | the 500 plaintext bytes encrypted with DES-CBC, PKCS#7 padding. IV and key are both the firmware key |
+| USB request 0–503 | DES-CBC encryption of the 500 plaintext bytes with PKCS#7 padding. The IV and key are both the firmware key |
 | USB request 504–509 | six zero bytes |
 | USB request 510–511 | fixed tail `A1 1A` |
 | USB request 512 onward | optional raw payload. Media payloads are not part of the header encryption |
@@ -31,7 +31,7 @@ DES-CBC is the compatibility format of existing firmware. Device replies stay pl
 
 In **Device commands**, header arguments and payloads support decimal and hexadecimal input. Ordinary decimal input is a space-separated sequence of bytes (0–255). For 101/102, the decimal header value is the full payload length; for 121, enter `block-length final-flag`. These lengths are encoded big-endian.
 
-Commands 38/42/98/99/110/113 default to an absolute ASCII device path, with the length field and reserved bytes filled in automatically. Changing input format clears that input to prevent reinterpretation. Unlisted commands follow their own definitions. For decimal header input on `39`, enter `buffer-capacity valid-length final-flag`. For `51`, enter `year month day hour minute second mode`.
+Commands 38/42/98/99/110/113 take an absolute ASCII device path; the length field and reserved bytes are filled in automatically. Changing the input format clears that field to avoid misinterpretation. Unlisted commands follow their own definitions. For command 39, enter `buffer-capacity valid-length final-flag`; for 51, enter `year month day hour minute second mode`.
 
 Commands 101 (JPEG), 102 (PNG) and 40 (small-file write) support browsing for a local file. Studio fills in byte lengths; 40 also requires an absolute ASCII destination path on the device and a file under 100 KiB. Selecting a file prepares the request; use **Send** to transmit it.
 
@@ -92,35 +92,35 @@ The standard round panel (PID `0021`) does not offer Windows desktop mode. Raw L
 | 10 | GET_FIRMWARE_VERSION | Reply is at least 40 bytes. Offset 0 should be 10; 8–39 = UTF-8 firmware version, trailing NUL stripped | Advanced controls · Device commands |
 | 11 | RESTART_DEVICE | Zero-filled header arguments and a 512-byte request. Restart interrupts the USB session. No dedicated success code is specified | Device commands |
 | 12 | SHUT_DOWN_DEVICE | Zero-filled header arguments and a 512-byte request. Requests device shutdown. Behavior depends on firmware. No dedicated success code is specified | Device commands |
-| 13 | SET_DISPLAY_ORIENTATION | header 8 = u8, 0–3 map to 0°, 90°, 180°, 270°; remaining arguments zero. Studio combines host-side frame rotation with firmware orientation according to the model. Check the result on the physical panel. Command 60 may fail to reflect the setting on some firmware | Media · orientation |
+| 13 | SET_DISPLAY_ORIENTATION | Header 8 = u8, 0–3 map to 0°, 90°, 180°, 270°; remaining arguments zero. Studio combines host-side frame rotation with firmware orientation according to the model. Check the result on the physical panel. Command 60 may fail to reflect the setting on some firmware | Media · orientation |
 | 14 | SET_DISPLAY_BRIGHTNESS | Header 8 holds a u8 in the range 0–100. Studio converts percentages to floor(percent × 80 ÷ 100) for the 12.3-inch display. No common success code is specified | Media · display controls |
-| 15 | SET_VIDEO_FRAME_RATE | header 8 = u8, frames/second; Studio accepts 1–60. Set before writing the first H.264 block | Media, live input |
-| 49 | SET_VIDEO_CLOCK_SYNC | header 8 = u8; 0 disables video clock sync, 1 enables. Date/time is set with 51 | Device commands |
+| 15 | SET_VIDEO_FRAME_RATE | Header 8 = u8, frames/second; Studio accepts 1–60. Set before writing the first H.264 block | Media, live input |
+| 49 | SET_VIDEO_CLOCK_SYNC | Header 8 = u8; 0 disables video clock sync, 1 enables. Date/time is set with 51 | Device commands |
 | 50 | GET_SUPPLY_VOLTAGE | No request arguments. Reply is at least 12 bytes. Offsets 8–11 contain a u32be supply reading in mV on compatible 12.3-inch firmware | Advanced controls · Device commands |
 | 51 | SET_DEVICE_CLOCK | Header 8–9 holds the year as u16be. Bytes 10–15 hold month, day, hour, minute, second and mode as u8 values. Mode 0 disables the clock, 1 enables it, and 2 sets the time only. Reply byte 0 echoes 51. The SDK uses local host time | Advanced controls (4.6-inch display) · Device commands |
 | 52 | STOP_DEVICE_CLOCK | Header 8 is 0. Stops the device clock layer. No common success code is specified | Advanced controls (4.6-inch display) · Device commands |
-| 60 | GET_ORIENTATION_STATE | no request arguments. Reply ≥ 10 bytes, offset 8 = current orientation, offset 9 = sensor orientation, each u8. Raw channel 0x60 queries temperature. Some firmware returns zero for both fields. The reply alone does not confirm a manual orientation setting | Commands |
+| 60 | GET_ORIENTATION_STATE | No request arguments. Reply ≥ 10 bytes, offset 8 = current orientation, offset 9 = sensor orientation, each u8. Raw channel 0x60 queries temperature. Some firmware returns zero for both fields. The reply alone does not confirm a manual orientation setting | Commands |
 | 61 | SET_PUMP_SPEED | Encrypted pump speed setting. Arguments and reply layout are unspecified. Use raw 0x61 for compatible pump and fan controls | reference |
 | 62 | GET_PUMP_SPEED | Encrypted pump speed query. The reply layout is unspecified. Use raw 0x62 for compatible pump and fan speed queries | reference |
 | 125 | SET_DEVICE_CONFIGURATION | Header 8–14 holds brightness, boot mode, 0, orientation, sleep delay, offline mode and offline clock orientation as u8 values. Mode values and delay units depend on firmware. Studio enables manual entry in the command console for the 4.6-inch model. Brightness is 0–100, startup mode 0–2, orientation 0–3, and offline mode 0–1. Set the remaining fields to 0. For the 12.3-inch model, use Advanced controls, which keeps firmware orientation at 0° | Advanced controls (4.6-inch display) · Device commands |
-| 150 | SWITCH_TO_DESKTOP_MODE | header arguments all zero. Sets Windows desktop mode for the next boot. Send 11 separately to restart. Model support varies | Device commands |
+| 150 | SWITCH_TO_DESKTOP_MODE | Header arguments all zero. Sets Windows desktop mode for the next boot. Studio offers to restart immediately; you can also send 11 separately. Model support varies | Device commands |
 | 201 | GET_DEVICE_POSITION_INDEX | Zero-filled header arguments. Supported SLC models return a u16be pump reading at reply offsets 10–11 | Commands |
 
 ## Images, video and layers
 
 | Number | Name | Arguments and reply | Studio entry |
 | --- | --- | --- | --- |
-| 17 | GET_H264_BLOCK_SIZE | no request arguments. Reply ≥ 12 bytes, 8–11 = u32be byte count. 0 uses 198 KiB; Studio rejects block sizes above 4 MiB | Commands |
-| 101 | DISPLAY_JPEG | header 8–11 = u32be byte count, complete JPEG from USB offset 512. Reply status code not uniformly defined | Media |
-| 102 | DISPLAY_PNG_OVERLAY | header 8–11 = u32be byte count, complete 8-bit RGBA PNG from USB offset 512. Alpha is composited by firmware. Live PNGs may alternate with 121. Studio validates PNG chunk checksums and compressed pixel data before sending from the command console | Media, live input |
-| 110 | START_LOCAL_H264_PLAYBACK | Header 8–11 holds the path length as u32be. The ASCII path starts at offset 16. The SDK checks for status 200 at offset 8 of the matching command 110 reply. If the reply starts with `6E C8` (command 110 echoed, 200 at offset 1) and offset 8 is zero, the SDK queries 112 for the playback state and requires a non-zero state | Advanced controls · on-device media |
-| 111 | STOP_LOCAL_H264_PLAYBACK | header arguments all zero, stops H.264 playback from device storage. Host streaming stops with 123 | Commands |
-| 112 | GET_LOCAL_H264_PLAYBACK_STATE | no request arguments. Reply ≥ 9 bytes, 8 = u8; 0 = stopped, non-zero = playing | Commands |
+| 17 | GET_H264_BLOCK_SIZE | No request arguments. Reply ≥ 12 bytes, 8–11 = u32be byte count. 0 uses 198 KiB; Studio rejects block sizes above 4 MiB | Commands |
+| 101 | DISPLAY_JPEG | Header 8–11 = u32be byte count, complete JPEG from USB offset 512. Reply status code not uniformly defined | Media |
+| 102 | DISPLAY_PNG_OVERLAY | Header 8–11 = u32be byte count, complete 8-bit RGBA PNG from USB offset 512. Alpha is composited by firmware. Live PNGs may alternate with 121. Studio validates PNG chunk checksums and compressed pixel data before sending from the command console | Media, live input |
+| 110 | START_LOCAL_H264_PLAYBACK | Header 8–11 holds the path length as u32be. The ASCII path starts at offset 16. The SDK first checks offset 8 of the matching command 110 reply for status 200. Some firmware returns the status at offset 1 instead (the reply starts with `6E C8`); when offset 8 is zero in that form, the SDK queries 112 and requires a non-zero playback state | Advanced controls · on-device media |
+| 111 | STOP_LOCAL_H264_PLAYBACK | Header arguments all zero; stops H.264 playback from device storage. Host streaming stops with 123 | Commands |
+| 112 | GET_LOCAL_H264_PLAYBACK_STATE | No request arguments. Reply ≥ 9 bytes, 8 = u8; 0 = stopped, non-zero = playing | Commands |
 | 113 | DISPLAY_LOCAL_JPEG | Uses the path layout of 110. SDK on-device image playback expects a matching command 113 reply with status 200 at offset 1 | Advanced controls · on-device media |
-| 114 | STOP_LOCAL_JPEG_LOOP | header arguments all zero, stops the device JPEG loop. Firmware defines no common layer-clear reply | Commands |
-| 121 | WRITE_H264_STREAM_BLOCK | header 8–11 = block length u32be, 12 = 1 on the final block else 0. Annex B data from USB offset 512. Reply ≥ 9 bytes, 8 = queue depth u8 | Media, live input |
-| 122 | GET_H264_QUEUE_DEPTH | normal query, header arguments all zero. Reply ≥ 9 bytes, 8 = queue depth u8. Sync extension below | Commands |
-| 123 | STOP_H264_STREAM | header arguments all zero. Sent after the host stops sending, so later blocks do not restart video | Media, Commands |
+| 114 | STOP_LOCAL_JPEG_LOOP | Header arguments all zero; stops the device JPEG loop. Firmware defines no common layer-clear reply | Commands |
+| 121 | WRITE_H264_STREAM_BLOCK | Header 8–11 = block length u32be, 12 = 1 on the final block else 0. Annex B data from USB offset 512. Reply ≥ 9 bytes, 8 = queue depth u8 | Media, live input |
+| 122 | GET_H264_QUEUE_DEPTH | Normal query, header arguments all zero. Reply ≥ 9 bytes, 8 = queue depth u8. Sync extension below | Commands |
+| 123 | STOP_H264_STREAM | Header arguments all zero. Sent after the host stops sending, so later blocks do not restart video | Media, Commands |
 
 An ordinary video transfer proceeds in this order: stop existing playback and the clock layer (123, 52), set the frame rate (15), read the block size (17), wait for the queue depth to reach 1 or less, then send Annex B data block by block (121). File input waits about 30 ms between blocks. Live input sends smaller blocks and briefly waits to merge frames, reducing per-block reply overhead. When the queue depth exceeds 3, the SDK waits for it to fall to 2 or less before continuing. After the host stops sending, the display keeps playing the blocks already received.
 
@@ -139,7 +139,7 @@ When the display supports layer composition, 102 (PNG foreground) and 121 (H.264
 | 100 | GET_STORAGE_CAPACITY | Reply is at least 32 bytes. Offsets 8, 12 and 16 = SD total, used and free; offsets 20, 24 and 28 = Flash equivalents. Fields are little-endian 32-bit, in KiB | Advanced controls · Device commands |
 | 246 | TEST_USB_THROUGHPUT | USB write throughput check. Known requests use a zero-filled buffer; other fields are unspecified | protocol reference only; no Studio preset |
 | 251 | SYNC_PUMP_AND_FAN_OUTPUTS | A 16-byte argument block starts at plaintext offset 8. Within the block, offsets 0–2 are FF 0F A1, offset 3 is 0, 4–5 hold the pump value as u16be, 6–8 hold three fan values, and 9–15 are zero | Device commands |
-| 252 | WRITE_RGB_ANIMATION | header 8–11 zero, 12–15 = payload length u32be. USB offset 512–513 = total frames u16be, 514 = frame interval u8, animation data from 515. Interval unit and frame encoding are firmware-defined | Device commands |
+| 252 | WRITE_RGB_ANIMATION | Header 8–11 zero, 12–15 = payload length u32be. USB offset 512–513 = total frames u16be, 514 = frame interval u8, animation data from 515. Interval unit and frame encoding are firmware-defined | Device commands |
 | 253 | RUN_FACTORY_H264_TEST | Manufacturing H.264 check. The request argument layout is unspecified | protocol reference only; no Studio preset |
 
 ## Raw channel
@@ -149,13 +149,13 @@ The raw channel uses the same endpoints but the request is a 64-byte buffer with
 | Number | Name | Request and reply | Studio entry |
 | --- | --- | --- | --- |
 | 0x11 | WRITE_LED_PIXEL_BLOCK | Request byte 1 holds the LED start index as u8, followed by RGB data from offset 4. A compatible block layout uses start indices 0, 15 and 30 with up to 45, 45 and 15 data bytes respectively. Unused bytes are zero | reference |
-| 0x60 | GET_COOLING_TEMPERATURES | request 1–63 zero-filled. Reply ≥ 3 bytes, 1 and 2 = pump and fan temperature u8 in °C | reference |
+| 0x60 | GET_COOLING_TEMPERATURES | Request 1–63 zero-filled. Reply ≥ 3 bytes, 1 and 2 = pump and fan temperature u8 in °C | reference |
 | 0x61 | SET_COOLING_SPEEDS | Request offsets 1–2 and 3–4 hold pump and fan targets as u16be. Offsets 5–63 are zero. The compatible scale uses 3500 as the full-scale raw value | reference |
-| 0x62 | GET_COOLING_SPEEDS | request 1–63 zero-filled. Reply ≥ 5 bytes, 1–2 and 3–4 = pump and fan speed u16be. Conversion is model-dependent | reference |
+| 0x62 | GET_COOLING_SPEEDS | Request 1–63 zero-filled. Reply ≥ 5 bytes, 1–2 and 3–4 = pump and fan speed u16be. Conversion is model-dependent | reference |
 
 ## Packet and reply examples
 
-Below are pre-encryption headers with the timestamp fixed at 1 ms. Each encrypted header is zero-padded to 500 bytes, then encrypted as described in “Encrypted channel packet”.
+Below are pre-encryption headers with the timestamp fixed at 1 ms. Each plaintext header is zero-padded to 500 bytes, then encrypted as described in “Encrypted channel packet”.
 
 | Operation | Plaintext header leading bytes | Explanation |
 | --- | --- | --- |

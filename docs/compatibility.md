@@ -58,7 +58,7 @@ Set the 12.3-inch display's orientation on the **Media** page. To resume Studio 
 
 The 3.5-inch serial display (`1A86:5722`) is separate from the WinUSB/Win207 `1CBE:0035` and uses CH340, not WinUSB/Win207. Studio recognizes it by `USB35INCH`, hides other foreground sources and shows only the **Native theme** source. Select any `.data` theme; Studio renders it locally and sends the frame over serial. See the [serial protocol](serial-protocol.md) for the register packet and frame format.
 
-- Three neutral factory themes ship with Studio: `默认主题-深蓝`, `默认主题-深空` and `默认主题-灰岩` (480 × 320). Themes must use a 480 × 320 or 320 × 480 canvas; other sizes are rejected.
-- Studio reads only JSON `.data` themes; convert legacy binary `.data` first.
+- Eight factory themes ship with Studio: `默认主题-深蓝`, `默认主题-深空`, `默认主题-灰岩`, `默认主题-极简`, `默认主题-智显` and `默认主题-地球` use 480 × 320, while `默认主题-笔记` and `默认主题-仪表` use 320 × 480. Other canvas sizes are rejected.
+- Studio reads the original `.data` themes produced by the 3.5-inch display tool.
 - Brightness and orientation are on the **Media** page. Brightness is 0–100% (0% darkest, 100% brightest); orientation is 0° or 180°. Changes apply during playback; orientation changes resend the frame.
-- Preview and output use theme sample values; live sensor data is not read.
+- Preview and output use simulated mock values for named metrics and theme values for custom text; live sensor data is not read.

@@ -109,7 +109,7 @@
   "OutputTargetDetails": "Output target: {0}",
   "SelectTargetDisplay": "Select a target display.",
   "NativeTheme": "Native theme",
-  "NativeThemeHint": "This display only supports native themes. Other foreground sources are hidden. JSON .data is supported; legacy binary themes must be converted first.",
+  "NativeThemeHint": "This display only supports native themes. Other foreground sources are hidden. Original .data themes are supported.",
   "SelectNativeTheme": "Select a .data native theme file.",
   "NativeThemePlaying": "Playing native theme: {0}",
   "NativeThemeStopped": "Native theme playback stopped.",

@@ -69,6 +69,8 @@ public partial class MainWindow : Window
     private string? preferredDevicePath;
     /// <summary>为设备枚举和待重连续播安排后续检查。</summary>
     private readonly DispatcherTimer deviceTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    /// <summary>原生主题预览的实时刷新定时器。</summary>
+    private readonly DispatcherTimer nativePreviewTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly Func<DisplayDevice[]> discoverDisplays;
 
     /// <summary>初始化主窗口及其控件。</summary>
@@ -110,6 +112,12 @@ public partial class MainWindow : Window
         {
             deviceTimer.Stop();
             await RefreshDevicesAsync();
+        };
+        nativePreviewTimer.Tick += (_, _) =>
+        {
+            // 上一帧仍在渲染时跳过本次刷新，避免定时器堆积后台任务。
+            if (SelectedNativeTheme is not null && !closing && nativePreviewCancellation is null)
+                _ = UpdateNativeThemePreviewAsync();
         };
         Closed += (_, _) =>
         {
@@ -414,6 +422,7 @@ public partial class MainWindow : Window
             Rotation.SelectedIndex = 0;
         if (!enabled)
         {
+            nativePreviewTimer.Stop();
             nativePreviewCancellation?.Cancel();
             NativeThemeImage.Source = null;
             NativeThemeImage.Visibility = Visibility.Collapsed;
@@ -424,6 +433,7 @@ public partial class MainWindow : Window
                 nativeThemePath = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault() ?? "";
             PopulateNativeThemeChoices();
             _ = UpdateNativeThemePreviewAsync();
+            nativePreviewTimer.Start();
             Status.Text = T("NativeThemeHint");
         }
     }
@@ -770,7 +780,7 @@ public partial class MainWindow : Window
         }, backgroundVideo ? T("PreparingVideo") : T("PreparingImage"), resumeOnReconnect: true);
     }
 
-    /// <summary>选择任意位置的原生主题 JSON 文件。</summary>
+    /// <summary>选择任意位置的原生主题 .data 文件。</summary>
     private void OnBrowseNativeTheme(object sender, RoutedEventArgs e)    {
         string? initial = NativeThemePlayer.DiscoverFactoryThemes().FirstOrDefault();
         var picker = new OpenFileDialog
@@ -1419,6 +1429,7 @@ public partial class MainWindow : Window
         {
             closing = true;
             deviceTimer.Stop();
+            nativePreviewTimer.Stop();
             quickControlTimer.Stop();
             confirmation?.TrySetResult(false);
             deviceControlShutdown.Cancel();

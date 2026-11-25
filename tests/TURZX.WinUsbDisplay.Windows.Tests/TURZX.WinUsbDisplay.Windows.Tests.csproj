@@ -15,4 +15,7 @@
     <ProjectReference Include="../../src/TURZX.WinUsbDisplay.Studio/TURZX.WinUsbDisplay.Studio.csproj" />
     <ProjectReference Include="../../src/TURZX.WinUsbDisplay.Windows/TURZX.WinUsbDisplay.Windows.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

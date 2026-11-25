@@ -64,10 +64,16 @@ internal sealed class NativeThemeSerialSession : IDisposable
     internal static byte BrightnessRegisterValue(byte brightness) => (byte)(255 - brightness);
 
     /// <summary>发送完整 RGB565 画面。</summary>
-    internal void SendFrame(Bitmap bitmap)
+    internal void SendFrame(Bitmap bitmap) =>
+        SendRegion(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+
+    /// <summary>只发送指定矩形区域的 RGB565 像素，用于实时刷新。</summary>
+    internal void SendRegion(Bitmap bitmap, Rectangle region)
     {
-        byte[] pixels = ToRgb565(bitmap);
-        byte[] header = BuildRegisterPacket(197, 0, 0, bitmap.Width - 1, bitmap.Height - 1, null);
+        if (region.Width <= 0 || region.Height <= 0)
+            return;
+        byte[] pixels = ToRgb565(bitmap, region);
+        byte[] header = BuildRegisterPacket(197, region.X, region.Y, region.Right - 1, region.Bottom - 1, null);
         lock (writeGate)
         {
             port.Write(header, 0, header.Length);
@@ -113,24 +119,27 @@ internal sealed class NativeThemeSerialSession : IDisposable
         return header;
     }
 
-    internal static byte[] ToRgb565(Bitmap bitmap)
+    internal static byte[] ToRgb565(Bitmap bitmap) =>
+        ToRgb565(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+
+    internal static byte[] ToRgb565(Bitmap bitmap, Rectangle region)
     {
         int width = bitmap.Width;
         int height = bitmap.Height;
-        var result = new byte[checked(width * height * 2)];
+        var result = new byte[checked(region.Width * region.Height * 2)];
         BitmapData data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly,
             PixelFormat.Format32bppArgb);
         try
         {
             var row = new byte[Math.Abs(data.Stride)];
             int target = 0;
-            for (int y = 0; y < height; y++)
+            for (int y = 0; y < region.Height; y++)
             {
-                IntPtr source = data.Scan0 + y * data.Stride;
+                IntPtr source = data.Scan0 + (region.Y + y) * data.Stride;
                 System.Runtime.InteropServices.Marshal.Copy(source, row, 0, row.Length);
-                for (int x = 0; x < width; x++)
+                int offset = region.X * 4;
+                for (int x = 0; x < region.Width; x++, offset += 4)
                 {
-                    int offset = x * 4;
                     byte blue = row[offset];
                     byte green = row[offset + 1];
                     byte red = row[offset + 2];

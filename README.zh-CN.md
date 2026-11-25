@@ -45,7 +45,7 @@
 | 9.2 寸 A092 | `1CBE:A092` | 464 × 1920 |
 | 12.3 寸 | `1CBE:0123` | 720 × 1920 |
 
-全部 35 个 Win207 PID 见[兼容性记录](docs/compatibility.zh-CN.md#支持的-win207-型号)。3.5 寸串口屏使用 `1A86:5722` CH340 串口，Studio 在本机渲染 `.data` 主题文件并内置三个默认主题，详见[支持的串口屏](docs/compatibility.zh-CN.md#支持的串口屏)和[串口协议](docs/serial-protocol.zh-CN.md)。
+全部 35 个 Win207 PID 见[兼容性记录](docs/compatibility.zh-CN.md#支持的-win207-型号)。3.5 寸串口屏使用 `1A86:5722` CH340 串口，Studio 在本机渲染 `.data` 主题文件并内置八个默认主题，详见[支持的串口屏](docs/compatibility.zh-CN.md#支持的串口屏)和[串口协议](docs/serial-protocol.zh-CN.md)。
 
 ## 构建与运行
 

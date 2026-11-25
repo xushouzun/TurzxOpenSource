@@ -99,7 +99,7 @@ public class NativeThemeTests
         string? directory = FindNativeThemeDirectory();
         Assert.NotNull(directory);
         string[] themes = Directory.GetFiles(directory, "*.data");
-        Assert.Equal(3, themes.Length);
+        Assert.Equal(8, themes.Length);
         foreach (string path in themes)
         {
             using NativeThemeDocument theme = NativeThemeDocument.Load(path);
@@ -179,47 +179,143 @@ public class NativeThemeTests
     }
 
     [Fact]
-    public void RejectsThemesForOtherCanvasSizes()
+    public void RegionRgb565ReadsOnlyTheRequestedRectangle()
+    {
+        using var bitmap = new Bitmap(2, 1);
+        bitmap.SetPixel(0, 0, Color.Black);
+        bitmap.SetPixel(1, 0, Color.Red);
+        Assert.Equal(new byte[] { 0x00, 0xF8 },
+            NativeThemeSerialSession.ToRgb565(bitmap, new Rectangle(1, 0, 1, 1)));
+    }
+
+    [Fact]
+    public void FrameDiffOnlyReturnsChangedTiles()
+    {
+        using var previous = new Bitmap(64, 64);
+        using var current = new Bitmap(64, 64);
+        using (Graphics graphics = Graphics.FromImage(previous))
+            graphics.Clear(Color.Black);
+        using (Graphics graphics = Graphics.FromImage(current))
+        {
+            graphics.Clear(Color.Black);
+            graphics.FillRectangle(Brushes.White, 20, 20, 4, 4);
+        }
+
+        Rectangle region = Assert.Single(NativeThemeFrameDiff.FindRegions(previous, current));
+        Assert.Equal(new Rectangle(16, 16, 16, 16), region);
+        Assert.Empty(NativeThemeFrameDiff.FindRegions(previous, previous));
+    }
+
+    [Fact]
+    public void RejectsFilesThatAreNotBinaryThemes()
     {
         using var directory = new TemporaryDirectory();
-        using var background = new Bitmap(224, 64);
-        using var stream = new MemoryStream();
-        background.Save(stream, ImageFormat.Png);
-        string png = Convert.ToBase64String(stream.ToArray());
-        string path = directory.File("wrong-size.data");
-        File.WriteAllText(path, """
-            {"isLanscape":true,"deviceIndex":1,"backImg":{"png":"__PNG__"},
-             "groupList":[],"barList":[],"archList":[],"tipList":[]}
-            """.Replace("__PNG__", png));
+        string path = directory.File("theme.data");
+        File.WriteAllText(path, """{"isLanscape":true,"deviceIndex":1}""");
 
         Assert.Throws<InvalidDataException>(() => NativeThemeDocument.Load(path));
     }
 
     [Fact]
-    public void JsonThemeRendersAtNativeCanvas()
+    public void TextGlyphIsClippedToItsCell()
     {
-        using var directory = new TemporaryDirectory();
-        using var background = new Bitmap(480, 320);
-        using var stream = new MemoryStream();
-        background.Save(stream, ImageFormat.Png);
-        string png = Convert.ToBase64String(stream.ToArray());
-        string path = directory.File("theme.data");
-        File.WriteAllText(path, """
-            {"isLanscape":true,"deviceIndex":1,"backImg":{"png":"__PNG__"},
-             "groupList":[{"enabled":true,"baseX":0,"baseY":0,"backImg":null,
-               "itemList":[{"enabled":true,"isLongStr":false,"itemName":"CpuLoad","strLen":2,
-                 "posX":10,"posY":20,"valueStr":"42",
-                 "fontType":{"size":20,"color":{"argb":-1},"offsetX":0,"offsetY":0,"interval":14,"W":14,"H":22}}]}],
-             "barList":[],"archList":[],"tipList":[]}
-            """.Replace("__PNG__", png));
+        var background = new Bitmap(120, 80);
+        using (Graphics graphics = Graphics.FromImage(background))
+            graphics.Clear(Color.Black);
+        using var theme = new NativeThemeDocument
+        {
+            IsLandscape = true,
+            Background = background,
+            // 原工具把字形居中在 (posX + offsetX, posY + offsetY) 并裁剪到 (posX, posY, W, H)，
+            // 不能按格子矩形居中，否则字会整体向右下移半格。
+            Groups =
+            {
+                new NativeThemeGroup
+                {
+                    Enabled = true,
+                    Items =
+                    {
+                        new NativeThemeItem
+                        {
+                            Enabled = true, Name = "CpuTemp", Value = "8", Length = 2,
+                            X = 10, Y = 20, Interval = 11, Width = 10, Height = 13,
+                            OffsetX = 5, OffsetY = 8, FontSize = 18, Color = Color.White
+                        }
+                    }
+                }
+            }
+        };
 
-        using NativeThemeDocument theme = NativeThemeDocument.Load(path);
-        Assert.True(theme.IsLandscape);
-        Assert.Single(theme.Groups);
-        Assert.Equal("42", theme.Groups[0].Items[0].Value);
+        using Bitmap frame = NativeThemeRenderer.Render(theme, new TestNativeThemeDataSource(new NativeThemeData()));
+        var cell = new Rectangle(10, 20, 10, 13);
+        for (int y = 0; y < frame.Height; y++)
+            for (int x = 0; x < frame.Width; x++)
+            {
+                if (cell.Contains(x, y))
+                    continue;
+                Color pixel = frame.GetPixel(x, y);
+                Assert.True(pixel.R < 16 && pixel.G < 16 && pixel.B < 16,
+                    $"Glyph pixel drawn outside its cell at ({x}, {y}).");
+            }
+    }
 
-        using Bitmap frame = NativeThemeRenderer.Render(theme);
-        Assert.Equal(480, frame.Width);
-        Assert.Equal(320, frame.Height);
+    [Fact]
+    public void CustomDataSourceSuppliesTextAndBarValues()
+    {
+        var cpuTemp = new NativeThemeItem { Enabled = true, Name = "CpuTemp", Value = "42", Length = 2 };
+        Assert.Equal("42", NativeThemeRenderer.ResolveText(cpuTemp, null));
+        Assert.Equal("45", NativeThemeRenderer.ResolveText(cpuTemp,
+            new NativeThemeData { CpuTemperatureCelsius = 45 }));
+        Assert.Equal("99", NativeThemeRenderer.ResolveText(cpuTemp,
+            new NativeThemeData { CpuTemperatureCelsius = 105 }));
+
+        var cpuLoad = new NativeThemeItem { Enabled = true, Name = "CpuLoad", Value = "88", Length = 2 };
+        Assert.Equal(" 5", NativeThemeRenderer.ResolveText(cpuLoad,
+            new NativeThemeData { CpuLoadPercent = 5 }));
+        Assert.Equal("99", NativeThemeRenderer.ResolveText(cpuLoad,
+            new NativeThemeData { CpuLoadPercent = 100 }));
+
+        var cpuFreq = new NativeThemeItem { Enabled = true, Name = "CpuFreq", Value = "4.8", Length = 3 };
+        Assert.Equal("4.8", NativeThemeRenderer.ResolveText(cpuFreq,
+            new NativeThemeData { CpuFrequencyMhz = 4800 }));
+
+        var background = new Bitmap(120, 60);
+        using (Graphics graphics = Graphics.FromImage(background))
+            graphics.Clear(Color.Black);
+        using var theme = new NativeThemeDocument
+        {
+            IsLandscape = true,
+            Background = background,
+            Bars =
+            {
+                new NativeThemeBar
+                {
+                    Item = new NativeThemeItem { Enabled = true, Name = "CpuLoad", X = 10, Y = 10 },
+                    Length = 100, Height = 10, DisplayLength = 100,
+                    BackColor = Color.Black, FrontColor = Color.White
+                }
+            }
+        };
+
+        using Bitmap frame = NativeThemeRenderer.Render(theme,
+            new TestNativeThemeDataSource(new NativeThemeData { CpuLoadPercent = 50 }));
+        Assert.Equal(Color.White.ToArgb(), frame.GetPixel(20, 15).ToArgb());
+        Assert.Equal(Color.Black.ToArgb(), frame.GetPixel(70, 15).ToArgb());
+    }
+
+    [Fact]
+    public void DefaultDataSourceProvidesMockSensorValues()
+    {
+        INativeThemeDataSource? source = NativeThemeDataSources.Current;
+        Assert.IsType<NativeThemeMockDataSource>(source);
+        NativeThemeData data = Assert.IsType<NativeThemeData>(source!.Read());
+        Assert.InRange(data.CpuLoadPercent!.Value, 20, 45);
+        Assert.InRange(data.CpuTemperatureCelsius!.Value, 50, 60);
+        Assert.InRange(data.RamLoadPercent!.Value, 50, 65);
+    }
+
+    private sealed class TestNativeThemeDataSource(NativeThemeData data) : INativeThemeDataSource
+    {
+        public NativeThemeData? Read() => data;
     }
 }

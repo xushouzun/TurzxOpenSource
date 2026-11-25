@@ -45,7 +45,7 @@ Looping GIFs are rendered at the 2.1-inch round display’s 480 × 480 resolutio
 | 9.2 inch A092 | `1CBE:A092` | 464 × 1920 |
 | 12.3 inch | `1CBE:0123` | 720 × 1920 |
 
-All 35 Win207 PIDs are listed in the [compatibility record](docs/compatibility.md#supported-win207-models). The 3.5-inch serial display uses a `1A86:5722` CH340 serial interface; Studio renders `.data` theme files locally and ships three factory themes. See [supported serial displays](docs/compatibility.md#supported-serial-displays) and the [serial protocol](docs/serial-protocol.md).
+All 35 Win207 PIDs are listed in the [compatibility record](docs/compatibility.md#supported-win207-models). The 3.5-inch serial display uses a `1A86:5722` CH340 serial interface; Studio renders `.data` theme files locally and ships eight factory themes. See [supported serial displays](docs/compatibility.md#supported-serial-displays) and the [serial protocol](docs/serial-protocol.md).
 
 ## Build and run
 

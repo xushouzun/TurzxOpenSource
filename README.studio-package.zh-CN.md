@@ -8,7 +8,7 @@
 
 - 离线预览时，安装 Chrome 或 Edge 后即可试用内置 HTML 场景。场景文件位于解压目录的 `Scenes/`。
 - 连接 Win207 屏幕前，按[首次送屏指南](docs/first-display.zh-CN.md)检查 WinUSB 驱动。支持的型号和说明见[设备兼容性](docs/compatibility.zh-CN.md)。
-- 3.5 寸串口屏由 Studio 直接渲染 `.data` 主题文件并通过 CH340 串口送屏；内置三个中性默认主题。
+- 3.5 寸串口屏由 Studio 直接渲染 `.data` 主题文件并通过 CH340 串口送屏；内置八个默认主题。
 - 转码视频时，在 Studio 的「媒体 → FFmpeg」选择带 `libx264` 的 FFmpeg。
 - Win207 屏幕处于 Windows 桌面模式时，在「设备指令」列表选择 `SWITCH_TO_MONITOR_MODE`。在右侧刷新桌面模式设备，按序列号选中屏幕后点击「切回副屏模式」，恢复 Studio 送屏。桌面模式还需要随包提供的 TURZX 显示驱动，可在 **高级控制** 页的桌面模式驱动区域点击「安装桌面模式驱动」并在管理员提示中确认；需要移除时点击「卸载桌面模式驱动」。
 - 在 Studio 的「技术文档」页查看协议与 SDK 指南，也可直接打开 [Win207 协议](docs/win207-protocol.zh-CN.md)、[串口协议](docs/serial-protocol.zh-CN.md) 和 [SDK 指南](docs/developer-guide.zh-CN.md)。
