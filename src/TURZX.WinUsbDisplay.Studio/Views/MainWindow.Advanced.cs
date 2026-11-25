@@ -114,8 +114,7 @@ public partial class MainWindow
     private async void OnUninstallDesktopModeDriver(object sender, RoutedEventArgs e)
     {
         if (busy || installingDesktopModeDriver || uninstallingDesktopModeDriver || !desktopModeDriverInstalled) return;
-        if (MessageBox.Show(T("DesktopModeDriverConfirmUninstall"), T("UninstallDesktopModeDriver"),
-                MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+        if (!await ConfirmAsync(T("UninstallDesktopModeDriver"), T("DesktopModeDriverConfirmUninstall")))
             return;
         uninstallingDesktopModeDriver = true;
         UpdateDesktopModeDriverControls();
